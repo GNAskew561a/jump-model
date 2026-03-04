@@ -1,0 +1,724 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Alexander Jump Model (Student App)</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 24px; max-width: 1250px; }
+    .muted { color: #666; font-size: 0.95rem; }
+    .card { border: 1px solid #ddd; border-radius: 14px; padding: 16px; margin-top: 16px; }
+    .row { display: grid; grid-template-columns: 320px 1fr 150px; gap: 12px; align-items: center; margin: 10px 0; }
+    input[type="range"] { width: 100%; }
+    button { padding: 10px 14px; border-radius: 10px; border: 1px solid #ccc; background: #f7f7f7; cursor: pointer; }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    code { background: #f3f3f3; padding: 2px 6px; border-radius: 6px; }
+    .kpis { display:grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 10px; }
+    .kpi { border:1px solid #eee; border-radius: 12px; padding: 12px; }
+    .kpi h3 { margin: 0 0 6px 0; font-size: 1rem; }
+    .kpi .v { font-size: 1.35rem; font-weight: 650; }
+    .kpi .s { color:#666; font-size:0.9rem; margin-top:4px; }
+    .err { color: #b00020; white-space: pre-wrap; }
+
+    .plotsGrid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 14px;
+      margin-top: 10px;
+    }
+    .colTitle {
+      font-weight: 650;
+      text-align: center;
+      margin: 10px 0 0 0;
+    }
+    .plotBox { height: 260px; border: 1px solid #eee; border-radius: 12px; padding: 6px; }
+    .rowLabel { margin-top: 14px; font-weight: 650; }
+    .toggleRow { display:flex; gap:10px; align-items:center; margin: 8px 0 2px 0; }
+    .small { font-size: 0.9rem; color: #666; }
+  </style>
+</head>
+
+<body>
+  <h1>Alexander Jump Model</h1>
+  <p class="muted">Browser-only interactive model for Squat vs Catapult vs Countermovement jumps.</p>
+
+  <div class="card">
+    <h2>Controls</h2>
+
+    <div class="row">
+      <label for="s">Leg segment length s (m)</label>
+      <input id="s" type="range" min="0.30" max="0.60" step="0.01" value="0.45">
+      <div><code id="sval"></code></div>
+    </div>
+
+    <div class="row">
+      <label for="kneeStart">Starting knee angle (2θ_start, deg)</label>
+      <input id="kneeStart" type="range" min="40" max="120" step="1" value="60">
+      <div><code id="kneeStartVal"></code></div>
+    </div>
+
+    <div class="row">
+      <label for="legFrac">Leg mass fraction (m2+m3)/m_total</label>
+      <input id="legFrac" type="range" min="0.10" max="0.35" step="0.01" value="0.30">
+      <div><code id="legFracVal"></code></div>
+    </div>
+
+    <hr style="border:none;border-top:1px solid #eee;margin:14px 0;">
+
+    <div class="row">
+      <label for="C">SEC compliance C (m/N) — baseline</label>
+      <input id="C" type="range" min="0.2e-6" max="10e-6" step="0.1e-6" value="2e-6">
+      <div><code id="Cval"></code></div>
+    </div>
+
+    <div class="row">
+      <label for="secScale">SEC length scale (multiplies effective compliance)</label>
+      <input id="secScale" type="range" min="0.5" max="2.0" step="0.05" value="1.0">
+      <div><code id="secScaleVal"></code></div>
+    </div>
+
+    <div class="row">
+      <label for="Vmax">Vmax (muscle lengths/s) — baseline</label>
+      <input id="Vmax" type="range" min="1" max="12" step="0.1" value="6.0">
+      <div><code id="Vmaxval"></code></div>
+    </div>
+
+    <div class="row">
+      <label for="ceScale">CE length scale (multiplies effective Vmax in m/s)</label>
+      <input id="ceScale" type="range" min="0.5" max="2.0" step="0.05" value="1.0">
+      <div><code id="ceScaleVal"></code></div>
+    </div>
+
+    <div class="row">
+      <label for="Fiso">Fm_iso (N)</label>
+      <input id="Fiso" type="range" min="1000" max="12000" step="100" value="6000">
+      <div><code id="Fisoval"></code></div>
+    </div>
+
+    <div class="row">
+      <label for="kMoment">Moment-arm variation k_moment</label>
+      <input id="kMoment" type="range" min="-0.5" max="0.5" step="0.02" value="0.0">
+      <div><code id="kMomentVal"></code></div>
+    </div>
+
+    <div class="row">
+      <label for="tauAct">Activation time constant τ_act (s)</label>
+      <input id="tauAct" type="range" min="0.002" max="0.060" step="0.002" value="0.020">
+      <div><code id="tauActVal"></code></div>
+    </div>
+
+    <div class="toggleRow">
+      <input id="matchDepth" type="checkbox" checked>
+      <label for="matchDepth"><b>Match CMJ minimum knee angle to starting knee angle</b></label>
+      <span class="small">(Option 1)</span>
+    </div>
+
+    <div class="row">
+      <label id="tOnLabel" for="tOn">CMJ timing: Δt offset (s)</label>
+      <input id="tOn" type="range" min="-0.15" max="0.15" step="0.01" value="0.00">
+      <div><code id="tOnval"></code></div>
+    </div>
+
+    <div style="margin-top:14px; display:flex; gap:12px; align-items:center;">
+      <button id="runBtn" disabled>Loading…</button>
+      <span id="status" class="muted"></span>
+    </div>
+    <div id="err" class="err" style="margin-top:10px;"></div>
+
+    <div class="kpis" id="kpis" style="display:none;">
+      <div class="kpi">
+        <h3>Squat jump height</h3>
+        <div class="v" id="h_sq">–</div>
+        <div class="s" id="sq_s">–</div>
+      </div>
+      <div class="kpi">
+        <h3>Catapult jump height</h3>
+        <div class="v" id="h_cat">–</div>
+        <div class="s" id="cat_s">–</div>
+      </div>
+      <div class="kpi">
+        <h3>CMJ jump height</h3>
+        <div class="v" id="h_cmj">–</div>
+        <div class="s" id="cmj_s">–</div>
+      </div>
+    </div>
+
+    <div id="cmjInfo" class="muted" style="margin-top:10px; display:none;"></div>
+  </div>
+
+  <div class="card">
+    <h2>Plots</h2>
+
+    <div class="plotsGrid" style="margin-top:6px;">
+      <div class="colTitle">Squat</div>
+      <div class="colTitle">Catapult</div>
+      <div class="colTitle">Countermovement</div>
+    </div>
+
+    <div class="rowLabel">Knee angle (deg)</div>
+    <div class="plotsGrid">
+      <div id="knee_sq" class="plotBox"></div>
+      <div id="knee_cat" class="plotBox"></div>
+      <div id="knee_cmj" class="plotBox"></div>
+    </div>
+
+    <div class="rowLabel">Ground reaction force (BW)</div>
+    <div class="plotsGrid">
+      <div id="grf_sq" class="plotBox"></div>
+      <div id="grf_cat" class="plotBox"></div>
+      <div id="grf_cmj" class="plotBox"></div>
+    </div>
+
+    <div class="rowLabel">Muscle force (N)</div>
+    <div class="plotsGrid">
+      <div id="fm_sq" class="plotBox"></div>
+      <div id="fm_cat" class="plotBox"></div>
+      <div id="fm_cmj" class="plotBox"></div>
+    </div>
+
+    <div class="rowLabel">Lengths (relative)</div>
+    <div class="plotsGrid">
+      <div id="len_sq" class="plotBox"></div>
+      <div id="len_cat" class="plotBox"></div>
+      <div id="len_cmj" class="plotBox"></div>
+    </div>
+  </div>
+
+  <script src="https://cdn.plot.ly/plotly-2.30.0.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/pyodide/v0.25.1/full/pyodide.js"></script>
+
+  <script>
+    const el = (id) => document.getElementById(id);
+
+    function formatSci(x) {
+      const v = Number(x);
+      if (!isFinite(v)) return String(x);
+      return v.toExponential(2);
+    }
+
+    function syncLabels() {
+      el("sval").textContent = Number(el("s").value).toFixed(2);
+      el("kneeStartVal").textContent = `${Math.round(Number(el("kneeStart").value))}`;
+      el("legFracVal").textContent = Number(el("legFrac").value).toFixed(2);
+
+      el("Cval").textContent = formatSci(el("C").value);
+      el("secScaleVal").textContent = Number(el("secScale").value).toFixed(2);
+
+      el("Vmaxval").textContent = Number(el("Vmax").value).toFixed(1);
+      el("ceScaleVal").textContent = Number(el("ceScale").value).toFixed(2);
+
+      el("Fisoval").textContent = Math.round(Number(el("Fiso").value)).toString();
+      el("kMomentVal").textContent = Number(el("kMoment").value).toFixed(2);
+      el("tauActVal").textContent = Number(el("tauAct").value).toFixed(3);
+
+      const md = el("matchDepth").checked;
+      el("tOnLabel").textContent = md ? "CMJ timing: Δt offset (s)" : "CMJ timing: t_on (s)";
+      if (md) {
+        el("tOn").min = -0.15; el("tOn").max = 0.15; el("tOn").step = 0.01;
+      } else {
+        el("tOn").min = 0.05; el("tOn").max = 0.45; el("tOn").step = 0.01;
+      }
+      el("tOnval").textContent = Number(el("tOn").value).toFixed(2);
+    }
+
+    ["s","kneeStart","legFrac","C","secScale","Vmax","ceScale","Fiso","kMoment","tauAct","tOn","matchDepth"]
+      .forEach(id => el(id).addEventListener("input", syncLabels));
+    el("matchDepth").addEventListener("change", () => {
+      // reset tOn when switching modes for clarity
+      el("tOn").value = el("matchDepth").checked ? "0.00" : "0.30";
+      syncLabels();
+    });
+    syncLabels();
+
+    let pyodide;
+
+    function num(x) {
+      if (x == null) return NaN;
+      try { if (typeof x === "object" && typeof x.toJs === "function") return Number(x.toJs()); } catch (_) {}
+      return Number(x);
+    }
+    function arr(x) {
+      if (x == null) return [];
+      if (typeof x === "object" && typeof x.toJs === "function") return x.toJs({ create_proxies: false });
+      return x;
+    }
+
+    const MODEL_PY = `
+import math
+import numpy as np
+
+# Web dt for speed
+DT = 5e-4
+T_MAX = 2.0
+
+def force_velocity(v_ce, F_iso, Vmax):
+    if abs(v_ce) < 1e-10:
+        return F_iso
+    if v_ce >= 0.0:
+        denom = Vmax + 23.0*v_ce
+        if abs(denom) < 1e-8:
+            return F_iso * 1.8
+        return F_iso * (1.8 - 0.8 * (Vmax - v_ce) / denom)
+    v_short = -v_ce
+    if v_short >= Vmax:
+        return 0.0
+    denom = Vmax - 3.0*v_ce
+    if abs(denom) < 1e-8:
+        return F_iso * 0.33
+    return F_iso * (Vmax + v_ce) / denom
+
+def compute_yddot(y, ydot, theta, T, s, g, m4, m5, m6):
+    cos_t = math.cos(theta)
+    if abs(cos_t) < 1e-8:
+        cos_t = 1e-8 if cos_t >= 0 else -1e-8
+    sec_t = 1.0/cos_t
+    tan_t = math.tan(theta)
+
+    term1 = 48*T*sec_t
+    term2 = 6*m5*g*s
+    term3 = m4 * ydot**2 * tan_t * sec_t**3
+
+    denom = 2*s*(m6 + m4*tan_t**2)
+    if abs(denom) < 1e-12:
+        return 0.0
+
+    ydd = (term1 - term2 - term3) / denom
+    return max(min(ydd, 100.0), -50.0)
+
+def compute_ground_force(yddot, m_total, g, m5):
+    return m_total*g + (m5/4)*yddot
+
+def compute_jump_height(y_off, ydot_off, m_total, g, m2, m3, m5, s):
+    term1 = y_off
+    term2 = (m5**2 * ydot_off**2) / (32*m_total**2*g)
+    term3 = (m2+3*m3)*(2*s - y_off)/(4*m_total)
+    return term1 + term2 + term3
+
+def moment_arm(theta, r0, k_moment):
+    return r0 * (1.0 + (6.0 * k_moment / math.pi) * (theta - math.pi/3.0))
+
+def solve_ce_sec(theta, ydot, activation, l_ce_prev, F_prev, L_prev,
+                C_eff, Fm_iso, Vmax_eff, s, r0, k_moment):
+    cos_t = math.cos(theta)
+    if abs(cos_t) < 1e-8:
+        cos_t = 1e-8 if cos_t >= 0 else -1e-8
+    sec_t = 1.0 / cos_t
+
+    dtheta_dt = (ydot * sec_t) / (2*s)
+    r_curr = moment_arm(theta, r0, k_moment)
+
+    # extension -> MTU shortens
+    v_mtu = -2.0 * r_curr * dtheta_dt
+    L_new = L_prev + v_mtu * DT
+
+    if activation < 1e-6:
+        F_new = 0.0
+        l_se_new = 0.0
+        l_ce_new = L_new
+        v_ce = (l_ce_new - l_ce_prev) / DT
+        return F_new, v_ce, L_new, l_ce_new, l_se_new
+
+    F_low = 0.0
+    F_high = activation * 1.8 * Fm_iso
+
+    def vce_from_F(F):
+        l_ce_new_local = L_new - C_eff*F
+        v = (l_ce_new_local - l_ce_prev) / DT
+        return max(min(v, Vmax_eff), -Vmax_eff)
+
+    def f_of_F(F):
+        v = vce_from_F(F)
+        F_ce = activation * force_velocity(v, Fm_iso, Vmax_eff)
+        return F - F_ce
+
+    # fast fixed point first
+    F = min(max(F_prev, F_low), F_high)
+    for _ in range(8):
+        v = vce_from_F(F)
+        F_ce = activation * force_velocity(v, Fm_iso, Vmax_eff)
+        F = 0.65*F + 0.35*min(max(F_ce, F_low), F_high)
+
+    # short bisection if bracketed
+    f_low = f_of_F(F_low)
+    f_high = f_of_F(F_high)
+    if f_low * f_high <= 0.0:
+        a, b = F_low, F_high
+        fa = f_low
+        for _ in range(18):
+            mid = 0.5*(a+b)
+            fm = f_of_F(mid)
+            if abs(fm) < 1e-5:
+                a = b = mid
+                break
+            if fa*fm <= 0.0:
+                b = mid
+            else:
+                a = mid
+                fa = fm
+        F = 0.5*(a+b)
+
+    F_new = min(max(F, F_low), F_high)
+    l_se_new = C_eff * F_new
+    l_ce_new = L_new - l_se_new
+    v_ce = (l_ce_new - l_ce_prev) / DT
+    v_ce = max(min(v_ce, Vmax_eff), -Vmax_eff)
+    return F_new, v_ce, L_new, l_ce_new, l_se_new
+
+def simulate_jump(technique, params, t_on):
+    g = params["g"]; s = params["s"]
+    m_total = params["m_total"]; m1 = params["m1"]; m2 = params["m2"]; m3 = params["m3"]
+    m4 = m2+m3
+    m5 = 4*m1 + 3*m2 + m3
+    m6 = 12*m1 + 7*m2 + m3
+
+    r0 = params["r0"]; k_moment = params["k_moment"]
+    Fm_iso = params["Fm_iso"]
+    C_eff = params["C_eff"]
+    Vmax_eff = params["Vmax_eff"]
+    tau_act = params["tau_act"]
+
+    theta_min = params["theta_min"]
+    theta_straight = params["theta_straight"]
+
+    t_hist=[]; theta_hist=[]; y_hist=[]; ydot_hist=[]
+    Fg_hist=[]; Fm_hist=[]; L_hist=[]; ce_hist=[]; se_hist=[]
+
+    y_min_allowed = 2*s*math.sin(theta_min)
+
+    if technique == 'squat':
+        theta = theta_min
+        y = 2*s*math.sin(theta)
+        ydot = 0.0
+        movement_started = False
+        muscle_active = True
+        activation = 0.0
+    elif technique == 'catapult':
+        theta = theta_min
+        y = 2*s*math.sin(theta)
+        ydot = 0.0
+        movement_started = True
+        muscle_active = True
+        activation = 1.0
+    elif technique == 'countermovement':
+        theta = theta_straight
+        y = 2*s*math.sin(theta)
+        ydot = 0.0
+        movement_started = True
+        muscle_active = False
+        activation = 0.0
+    else:
+        raise ValueError("Unknown technique")
+
+    t=0.0
+    l_ce = 0.0
+    Fm = Fm_iso if technique=='catapult' else 0.0
+    L_mtu = l_ce + C_eff*Fm
+
+    while t < T_MAX:
+        if technique in ('squat','catapult') and y < y_min_allowed:
+            y = y_min_allowed
+            if ydot < 0: ydot = 0
+
+        arg = min(max(y/(2*s), 0.001), 0.999)
+        theta = math.asin(arg)
+
+        if technique=='countermovement' and (not muscle_active) and t>=t_on:
+            muscle_active = True
+
+        target = 1.0 if muscle_active else 0.0
+        activation += (target - activation) * (DT/tau_act)
+        activation = min(max(activation,0.0),1.0)
+
+        Fm, v_ce, L_mtu, l_ce, l_se = solve_ce_sec(
+            theta, ydot, activation, l_ce, Fm, L_mtu,
+            C_eff, Fm_iso, Vmax_eff, s, r0, k_moment
+        )
+
+        T = Fm * moment_arm(theta, r0, k_moment)
+        ydd = compute_yddot(y, ydot, theta, T, s, g, m4, m5, m6)
+
+        if technique=='squat' and not movement_started:
+            if ydd > 0:
+                movement_started = True
+                yddot = ydd
+            else:
+                yddot = 0.0
+                ydot = 0.0
+        else:
+            yddot = ydd
+
+        Fg = compute_ground_force(yddot, m_total, g, m5)
+
+        t_hist.append(t)
+        theta_hist.append(theta)
+        y_hist.append(y)
+        ydot_hist.append(ydot)
+        Fg_hist.append(Fg)
+        Fm_hist.append(Fm)
+        L_hist.append(L_mtu)
+        ce_hist.append(l_ce)
+        se_hist.append(l_se)
+
+        if Fg <= 0 and t>0 and movement_started:
+            break
+
+        if movement_started or technique!='squat':
+            ydot += yddot*DT
+            y += ydot*DT
+
+        if y > 2*s:
+            y = 2*s
+            if ydot > 0:
+                break
+
+        t += DT
+
+    t_arr = np.array(t_hist)
+    theta_arr = np.array(theta_hist)
+    Fg_arr = np.array(Fg_hist)
+    Fm_arr = np.array(Fm_hist)
+    L_arr = np.array(L_hist)
+    ce_arr = np.array(ce_hist)
+    se_arr = np.array(se_hist)
+    y_arr = np.array(y_hist)
+    ydot_arr = np.array(ydot_hist)
+
+    y_off = float(y_arr[-1])
+    v_off = float(ydot_arr[-1]) if len(ydot_arr) else 0.0
+    h = float(compute_jump_height(y_off, v_off, m_total, g, m2, m3, m5, s))
+
+    return {
+      "t": t_arr,
+      "knee_deg": 2*np.degrees(theta_arr),
+      "grf_bw": Fg_arr/(m_total*g),
+      "Fm": Fm_arr,
+      "L": L_arr,
+      "CE": ce_arr,
+      "SEC": se_arr,
+      "h": h,
+      "min_knee": float(np.min(2*np.degrees(theta_arr))) if len(theta_arr) else float("nan"),
+      "peak_grf_bw": float(np.max(Fg_arr/(m_total*g))) if len(Fg_arr) else 0.0,
+      "peak_Fm": float(np.max(Fm_arr)) if len(Fm_arr) else 0.0,
+      "contact_time": float(t_arr[-1]) if len(t_arr) else 0.0,
+    }
+
+def find_ton_for_target_knee(params, target_knee_deg):
+    # Fast coarse search (kept small for web). Returns best t_on and min_knee.
+    candidates = np.linspace(0.05, 0.45, 13)
+    best_err = 1e9
+    best_t = 0.30
+    best_min = None
+    for t_on in candidates:
+        res = simulate_jump("countermovement", params, float(t_on))
+        min_k = res["min_knee"]
+        err = abs(min_k - target_knee_deg)
+        if err < best_err:
+            best_err = err
+            best_t = float(t_on)
+            best_min = float(min_k)
+    return best_t, (best_min if best_min is not None else float("nan"))
+
+def run_all(p):
+    try:
+        p = p.to_py()
+    except Exception:
+        pass
+
+    # --- Inputs ---
+    g = 9.81
+    s = float(p["s"])
+    knee_start_deg = float(p["knee_start_deg"])  # 2*theta
+    theta_min = math.radians(knee_start_deg/2.0)
+    theta_straight = math.radians(179.0/2.0)
+
+    m_total = 70.0
+    leg_frac = float(p["leg_frac"])  # (m2+m3)/m_total
+    m_leg = leg_frac * m_total
+    m1 = m_total - m_leg
+    # keep thigh:shank split fixed (2/3 : 1/3) but total leg mass varies
+    m2 = (2.0/3.0) * m_leg
+    m3 = (1.0/3.0) * m_leg
+
+    r0 = 0.04
+    k_moment = float(p["k_moment"])
+
+    Fm_iso = float(p["Fm_iso"])
+
+    C_base = float(p["C_base"])
+    sec_scale = float(p["sec_scale"])
+    C_eff = C_base * sec_scale
+
+    Vmax_base = float(p["Vmax_base"])     # lengths/s (baseline)
+    ce_scale = float(p["ce_scale"])
+    # Map to effective absolute velocity (m/s): treat ce_scale as setting an effective "fiber length scale"
+    # (longer CE => larger absolute Vmax for the same lengths/s)
+    Vmax_eff = Vmax_base * ce_scale
+
+    tau_act = float(p["tau_act"])
+
+    match_depth = bool(p["match_depth"])
+    t_control = float(p["t_control"])
+
+    params = dict(
+        g=g, s=s,
+        m_total=m_total, m1=m1, m2=m2, m3=m3,
+        r0=r0, k_moment=k_moment,
+        Fm_iso=Fm_iso,
+        C_eff=C_eff,
+        Vmax_eff=Vmax_eff,
+        tau_act=tau_act,
+        theta_min=theta_min,
+        theta_straight=theta_straight
+    )
+
+    if match_depth:
+        t_base, min_k = find_ton_for_target_knee(params, knee_start_deg)
+        t_on = min(max(t_base + t_control, 0.05), 0.45)
+        chosen_mode = "matched"
+        base = t_base
+    else:
+        t_on = min(max(t_control, 0.05), 0.45)
+        chosen_mode = "manual"
+        base, min_k = float("nan"), float("nan")
+
+    sq = simulate_jump("squat", params, t_on)
+    cat = simulate_jump("catapult", params, t_on)
+    cmj = simulate_jump("countermovement", params, t_on)
+
+    return {
+      "squat": sq, "catapult": cat, "cmj": cmj,
+      "cmj_t_on": float(t_on),
+      "cmj_mode": chosen_mode,
+      "cmj_t_base": float(base) if base==base else None,
+      "cmj_min_knee_at_base": float(min_k) if min_k==min_k else None,
+      "target_knee": float(knee_start_deg),
+    }
+`;
+
+    async function init() {
+      el("status").textContent = "Loading Python runtime…";
+      pyodide = await loadPyodide();
+      el("status").textContent = "Loading numpy…";
+      await pyodide.loadPackage(["numpy"]);
+      await pyodide.runPythonAsync(MODEL_PY);
+      el("runBtn").disabled = false;
+      el("runBtn").textContent = "Run simulation";
+      el("status").textContent = "Ready.";
+    }
+
+    function plotOne(divId, t, y, title, yLabel) {
+      Plotly.react(divId, [
+        { x: t, y: y, mode: "lines" }
+      ], {
+        title: title,
+        xaxis: { title: "Time (s)" },
+        yaxis: { title: yLabel },
+        margin: { l: 56, r: 10, t: 40, b: 48 },
+      }, {displayModeBar:false});
+    }
+
+    function plotLengths(divId, t, L, CE, SEC, title) {
+      Plotly.react(divId, [
+        { x: t, y: L, mode:"lines", name:"MTU" },
+        { x: t, y: CE, mode:"lines", name:"CE" },
+        { x: t, y: SEC, mode:"lines", name:"SEC" },
+      ], {
+        title: title,
+        xaxis: { title: "Time (s)" },
+        yaxis: { title: "Length (relative)" },
+        margin: { l: 56, r: 10, t: 40, b: 48 },
+        legend: { orientation: "h" }
+      }, {displayModeBar:false});
+    }
+
+    function render(out) {
+      const sq = out.get("squat");
+      const cat = out.get("catapult");
+      const cmj = out.get("cmj");
+
+      el("kpis").style.display = "grid";
+      el("cmjInfo").style.display = "block";
+
+      el("h_sq").textContent  = `${num(sq.get("h")).toFixed(3)} m`;
+      el("sq_s").textContent  = `Peak GRF ${num(sq.get("peak_grf_bw")).toFixed(2)} BW · Peak F ${Math.round(num(sq.get("peak_Fm")))} N · Contact ${num(sq.get("contact_time")).toFixed(3)} s`;
+
+      el("h_cat").textContent = `${num(cat.get("h")).toFixed(3)} m`;
+      el("cat_s").textContent = `Peak GRF ${num(cat.get("peak_grf_bw")).toFixed(2)} BW · Peak F ${Math.round(num(cat.get("peak_Fm")))} N · Contact ${num(cat.get("contact_time")).toFixed(3)} s`;
+
+      el("h_cmj").textContent = `${num(cmj.get("h")).toFixed(3)} m`;
+      el("cmj_s").textContent = `Peak GRF ${num(cmj.get("peak_grf_bw")).toFixed(2)} BW · Peak F ${Math.round(num(cmj.get("peak_Fm")))} N · Contact ${num(cmj.get("contact_time")).toFixed(3)} s`;
+
+      const cmjMode = out.get("cmj_mode");
+      const tOn = num(out.get("cmj_t_on"));
+      const targetKnee = num(out.get("target_knee"));
+
+      if (cmjMode === "matched") {
+        const tBase = out.get("cmj_t_base");
+        const minAtBase = out.get("cmj_min_knee_at_base");
+        el("cmjInfo").textContent =
+          `CMJ depth matching: target min knee = ${targetKnee.toFixed(0)}°, baseline t_on ≈ ${num(tBase).toFixed(2)} s (min knee ≈ ${num(minAtBase).toFixed(1)}°). Applied t_on = ${tOn.toFixed(2)} s (after Δt).`;
+      } else {
+        el("cmjInfo").textContent = `CMJ depth matching OFF: applied t_on = ${tOn.toFixed(2)} s.`;
+      }
+
+      // Plot each technique separately
+      plotOne("knee_sq",  arr(sq.get("t")),  arr(sq.get("knee_deg")), "Knee angle", "deg");
+      plotOne("knee_cat", arr(cat.get("t")), arr(cat.get("knee_deg")), "Knee angle", "deg");
+      plotOne("knee_cmj", arr(cmj.get("t")), arr(cmj.get("knee_deg")), "Knee angle", "deg");
+
+      plotOne("grf_sq",  arr(sq.get("t")),  arr(sq.get("grf_bw")), "GRF", "BW");
+      plotOne("grf_cat", arr(cat.get("t")), arr(cat.get("grf_bw")), "GRF", "BW");
+      plotOne("grf_cmj", arr(cmj.get("t")), arr(cmj.get("grf_bw")), "GRF", "BW");
+
+      plotOne("fm_sq",  arr(sq.get("t")),  arr(sq.get("Fm")), "Muscle force", "N");
+      plotOne("fm_cat", arr(cat.get("t")), arr(cat.get("Fm")), "Muscle force", "N");
+      plotOne("fm_cmj", arr(cmj.get("t")), arr(cmj.get("Fm")), "Muscle force", "N");
+
+      plotLengths("len_sq",  arr(sq.get("t")),  arr(sq.get("L")),  arr(sq.get("CE")),  arr(sq.get("SEC")),  "Lengths");
+      plotLengths("len_cat", arr(cat.get("t")), arr(cat.get("L")), arr(cat.get("CE")), arr(cat.get("SEC")), "Lengths");
+      plotLengths("len_cmj", arr(cmj.get("t")), arr(cmj.get("L")), arr(cmj.get("CE")), arr(cmj.get("SEC")), "Lengths");
+    }
+
+    el("runBtn").addEventListener("click", async () => {
+      el("err").textContent = "";
+      el("runBtn").disabled = true;
+      el("status").textContent = "Running…";
+
+      const matchDepth = el("matchDepth").checked;
+
+      const params = {
+        s: Number(el("s").value),
+        knee_start_deg: Number(el("kneeStart").value),
+        leg_frac: Number(el("legFrac").value),
+
+        C_base: Number(el("C").value),
+        sec_scale: Number(el("secScale").value),
+
+        Vmax_base: Number(el("Vmax").value),
+        ce_scale: Number(el("ceScale").value),
+
+        Fm_iso: Number(el("Fiso").value),
+        k_moment: Number(el("kMoment").value),
+        tau_act: Number(el("tauAct").value),
+
+        match_depth: matchDepth,
+        t_control: Number(el("tOn").value),
+      };
+
+      try {
+        pyodide.globals.set("JS_PARAMS", params);
+        const out = await pyodide.runPythonAsync(`run_all(JS_PARAMS)`);
+        render(out);
+        el("status").textContent = "Done.";
+      } catch (e) {
+        console.error(e);
+        el("status").textContent = "Error (details below).";
+        el("err").textContent = String(e);
+      } finally {
+        el("runBtn").disabled = false;
+      }
+    });
+
+    init();
+  </script>
+</body>
+</html>
