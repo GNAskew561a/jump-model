@@ -420,7 +420,7 @@ def solve_ce_sec(theta, ydot, activation, l_ce_prev, F_prev, L_prev,
 
     # Mild tendon-force damping to smooth abrupt CE velocity reversals
     # without materially changing the overall jump mechanics.
-    tau_force = 0.3
+    tau_force = 0.005
     alpha_force = min(DT / tau_force, 1.0)
     F_new = F_prev + alpha_force * (F_target - F_prev)
 
