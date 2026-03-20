@@ -65,30 +65,16 @@
     <hr style="border:none;border-top:1px solid #eee;margin:14px 0;">
 
     <div class="row">
-      <label for="C">SEC compliance C (m/N) — reference</label>
+      <label for="C">SEC compliance C (m/N)</label>
       <input id="C" type="range" min="0.5e-6" max="5e-6" step="0.1e-6" value="2e-6">
       <div><code id="Cval"></code></div>
     </div>
-
-    <div class="row">
-      <label for="secScale">SEC compliance factor (log10 scale)</label>
-      <input id="secScale" type="range" min="-0.40" max="0.40" step="0.05" value="0.00">
-      <div><code id="secScaleVal"></code></div>
-    </div>
-
-    <div class="row">
-      <label for="Vmax">Vmax (muscle lengths/s) — reference</label>
+<div class="row">
+      <label for="Vmax">Vmax (muscle lengths/s)</label>
       <input id="Vmax" type="range" min="2" max="10" step="0.1" value="6.0">
       <div><code id="Vmaxval"></code></div>
     </div>
-
-    <div class="row">
-      <label for="ceScale">Vmax factor (log10 scale)</label>
-      <input id="ceScale" type="range" min="-0.50" max="0.50" step="0.05" value="0.00">
-      <div><code id="ceScaleVal"></code></div>
-    </div>
-
-    <div class="row">
+<div class="row">
       <label for="Fiso">Fm_iso (N)</label>
       <input id="Fiso" type="range" min="1000" max="12000" step="100" value="6000">
       <div><code id="Fisoval"></code></div>
@@ -210,14 +196,10 @@
       el("legFracVal").textContent = Number(el("legFrac").value).toFixed(2);
 
       const Cref = Number(el("C").value);
-      const Cmult = 10 ** Number(el("secScale").value);
-      el("Cval").textContent = `${formatSci(Cref)} → ${formatSci(Cref * Cmult)}`;
-      el("secScaleVal").textContent = `${Cmult.toFixed(2)} ×`;
+      el("Cval").textContent = `${formatSci(Cref)}`;
 
       const Vref = Number(el("Vmax").value);
-      const Vmult = 10 ** Number(el("ceScale").value);
       el("Vmaxval").textContent = Vref.toFixed(1);
-      el("ceScaleVal").textContent = `${Vmult.toFixed(2)} ×`;
 
       el("Fisoval").textContent = Math.round(Number(el("Fiso").value)).toString();
       el("kMomentVal").textContent = Number(el("kMoment").value).toFixed(2);
@@ -235,7 +217,7 @@
       el("tOnval").textContent = Number(el("tOn").value).toFixed(2);
     }
 
-    ["s","kneeStart","legFrac","C","secScale","Vmax","ceScale","Fiso","kMoment","tauAct","tOn","matchDepth"]
+    ["s","kneeStart","legFrac","C","Vmax","Fiso","kMoment","tauAct","tOn","matchDepth"]
       .forEach(id => el(id).addEventListener("input", syncLabels));
     el("matchDepth").addEventListener("change", () => {
       // reset tOn when switching modes for clarity
@@ -248,9 +230,7 @@
       knee_start_deg: 60,
       leg_frac: 0.30,
       C_base: 2e-6,
-      sec_scale: 0.00,
-      Vmax_base: 6.0,
-      ce_scale: 0.15,
+      Vmax_base: 8.5,
       Fm_iso: 6000,
       k_moment: 0.00,
       tau_act: 0.00,
@@ -268,9 +248,7 @@
       el("kneeStart").value = String(p.knee_start_deg);
       el("legFrac").value = String(p.leg_frac);
       el("C").value = String(p.C_base);
-      el("secScale").value = String(p.sec_scale.toFixed(2));
       el("Vmax").value = String(p.Vmax_base);
-      el("ceScale").value = String(p.ce_scale.toFixed(2));
       el("Fiso").value = String(p.Fm_iso);
       el("kMoment").value = String(p.k_moment.toFixed(2));
       el("tauAct").value = String(p.tau_act.toFixed(2));
@@ -420,7 +398,7 @@ def solve_ce_sec(theta, ydot, activation, l_ce_prev, F_prev, L_prev,
 
     # Mild tendon-force damping to smooth abrupt CE velocity reversals
     # without materially changing the overall jump mechanics.
-    tau_force = 0.005
+    tau_force = 0.003
     alpha_force = min(DT / tau_force, 1.0)
     F_new = F_prev + alpha_force * (F_target - F_prev)
 
@@ -613,13 +591,9 @@ def run_all(p):
 
     Fm_iso = float(p["Fm_iso"])
 
-    C_base = float(p["C_base"])
-    sec_scale = float(p["sec_scale"])
-    C_eff = C_base * (10.0 ** sec_scale)
+    C_eff = float(p["C_base"])
 
-    Vmax_base = float(p["Vmax_base"])     # lengths/s (reference)
-    ce_scale = float(p["ce_scale"])
-    Vmax_eff = Vmax_base * (10.0 ** ce_scale)
+    Vmax_eff = float(p["Vmax_base"])  # lengths/s
 
     tau_ref = 0.020
     tau_act = tau_ref * (10.0 ** float(p["tau_act"]))
@@ -837,10 +811,8 @@ def run_all(p):
         leg_frac: Number(el("legFrac").value),
 
         C_base: Number(el("C").value),
-        sec_scale: Number(el("secScale").value),
 
         Vmax_base: Number(el("Vmax").value),
-        ce_scale: Number(el("ceScale").value),
 
         Fm_iso: Number(el("Fiso").value),
         k_moment: Number(el("kMoment").value),
