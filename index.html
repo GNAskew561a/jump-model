@@ -170,11 +170,18 @@
       <div id="grf_cmj" class="plotBox"></div>
     </div>
 
-    <div class="rowLabel">Muscle force (N)</div>
+    <div class="rowLabel">Muscle force (N) and CE velocity (m/s)</div>
     <div class="plotsGrid">
       <div id="fm_sq" class="plotBox"></div>
       <div id="fm_cat" class="plotBox"></div>
       <div id="fm_cmj" class="plotBox"></div>
+    </div>
+
+    <div class="rowLabel">CoM velocity (m/s)</div>
+    <div class="plotsGrid">
+      <div id="vcom_sq" class="plotBox"></div>
+      <div id="vcom_cat" class="plotBox"></div>
+      <div id="vcom_cmj" class="plotBox"></div>
     </div>
 
     <div class="rowLabel">Lengths (relative)</div>
@@ -231,6 +238,7 @@
     ["s","kneeStart","legFrac","C","secScale","Vmax","ceScale","Fiso","kMoment","tauAct","tOn","matchDepth"]
       .forEach(id => el(id).addEventListener("input", syncLabels));
     el("matchDepth").addEventListener("change", () => {
+      // reset tOn when switching modes for clarity
       el("tOn").value = el("matchDepth").checked ? "0.00" : "0.30";
       syncLabels();
     });
@@ -291,6 +299,7 @@
 import math
 import numpy as np
 
+# Web dt for speed
 DT = 5e-4
 T_MAX = 2.0
 
@@ -340,6 +349,8 @@ def moment_arm(theta, r0, k_moment):
     return r0 * (1.0 + (6.0 * k_moment / math.pi) * (theta - math.pi/3.0))
 
 def compliance_tuning_factor(C_eff, C_opt=2.0e-6):
+    # Teaching-oriented: best performance at moderate compliance.
+    # Too stiff or too compliant reduces effective performance.
     spread = 0.22
     log_dev = math.log10(max(C_eff, 1e-12) / C_opt)
     gaussian = math.exp(-0.5 * (log_dev / spread)**2)
@@ -355,6 +366,7 @@ def solve_ce_sec(theta, ydot, activation, l_ce_prev, F_prev, L_prev,
     dtheta_dt = (ydot * sec_t) / (2*s)
     r_curr = moment_arm(theta, r0, k_moment)
 
+    # extension -> MTU shortens
     v_mtu = -2.0 * r_curr * dtheta_dt
     L_new = L_prev + v_mtu * DT
 
@@ -378,12 +390,14 @@ def solve_ce_sec(theta, ydot, activation, l_ce_prev, F_prev, L_prev,
         F_ce = activation * force_velocity(v, Fm_iso, Vmax_eff)
         return F - F_ce
 
+    # fast fixed point first
     F = min(max(F_prev, F_low), F_high)
     for _ in range(8):
         v = vce_from_F(F)
         F_ce = activation * force_velocity(v, Fm_iso, Vmax_eff)
         F = 0.65*F + 0.35*min(max(F_ce, F_low), F_high)
 
+    # short bisection if bracketed
     f_low = f_of_F(F_low)
     f_high = f_of_F(F_high)
     if f_low * f_high <= 0.0:
@@ -426,7 +440,7 @@ def simulate_jump(technique, params, t_on):
     theta_straight = params["theta_straight"]
 
     t_hist=[]; theta_hist=[]; y_hist=[]; ydot_hist=[]
-    Fg_hist=[]; Fm_hist=[]; L_hist=[]; ce_hist=[]; se_hist=[]
+    Fg_hist=[]; Fm_hist=[]; vce_hist=[]; L_hist=[]; ce_hist=[]; se_hist=[]
 
     y_min_allowed = 2*s*math.sin(theta_min)
 
@@ -500,6 +514,7 @@ def simulate_jump(technique, params, t_on):
         ydot_hist.append(ydot)
         Fg_hist.append(Fg)
         Fm_hist.append(Fm)
+        vce_hist.append(v_ce)
         L_hist.append(L_mtu)
         ce_hist.append(l_ce)
         se_hist.append(l_se)
@@ -537,6 +552,8 @@ def simulate_jump(technique, params, t_on):
       "knee_deg": 2*np.degrees(theta_arr),
       "grf_bw": Fg_arr/(m_total*g),
       "Fm": Fm_arr,
+      "vCE": np.array(vce_hist),
+      "vCoM": ydot_arr,
       "L": L_arr,
       "CE": ce_arr,
       "SEC": se_arr,
@@ -548,6 +565,7 @@ def simulate_jump(technique, params, t_on):
     }
 
 def find_ton_for_target_knee(params, target_knee_deg):
+    # Fast coarse search (kept small for web). Returns best t_on and min_knee.
     candidates = np.linspace(0.05, 0.45, 13)
     best_err = 1e9
     best_t = 0.30
@@ -568,16 +586,18 @@ def run_all(p):
     except Exception:
         pass
 
+    # --- Inputs ---
     g = 9.81
     s = float(p["s"])
-    knee_start_deg = float(p["knee_start_deg"])
+    knee_start_deg = float(p["knee_start_deg"])  # 2*theta
     theta_min = math.radians(knee_start_deg/2.0)
     theta_straight = math.radians(179.0/2.0)
 
     m_total = 70.0
-    leg_frac = float(p["leg_frac"])
+    leg_frac = float(p["leg_frac"])  # (m2+m3)/m_total
     m_leg = leg_frac * m_total
     m1 = m_total - m_leg
+    # keep thigh:shank split fixed (2/3 : 1/3) but total leg mass varies
     m2 = (2.0/3.0) * m_leg
     m3 = (1.0/3.0) * m_leg
 
@@ -590,7 +610,7 @@ def run_all(p):
     sec_scale = float(p["sec_scale"])
     C_eff = C_base * (10.0 ** sec_scale)
 
-    Vmax_base = float(p["Vmax_base"])
+    Vmax_base = float(p["Vmax_base"])     # lengths/s (reference)
     ce_scale = float(p["ce_scale"])
     Vmax_eff = Vmax_base * (10.0 ** ce_scale)
 
@@ -672,6 +692,53 @@ def run_all(p):
       }, {displayModeBar:false});
     }
 
+
+    function plotForceVelocity(divId, tF, F, vCE, title, tOpt = null, FOpt = null, vCEOpt = null) {
+      const traces = [];
+      if (tOpt && FOpt && vCEOpt) {
+        traces.push(
+          {
+            x: tOpt,
+            y: FOpt,
+            mode: "lines",
+            name: "Force optimal",
+            line: { dash: "dot", width: 2 },
+            opacity: 0.35,
+            hovertemplate: "Optimal force<extra></extra>",
+            yaxis: "y"
+          },
+          {
+            x: tOpt,
+            y: vCEOpt,
+            mode: "lines",
+            name: "CE vel optimal",
+            line: { dash: "dot", width: 2 },
+            opacity: 0.25,
+            hovertemplate: "Optimal CE velocity<extra></extra>",
+            yaxis: "y2"
+          }
+        );
+      }
+      traces.push(
+        { x: tF, y: F, mode: "lines", name: "Force", hovertemplate: "Current force<extra></extra>", yaxis: "y" },
+        { x: tF, y: vCE, mode: "lines", name: "CE vel", hovertemplate: "Current CE velocity<extra></extra>", yaxis: "y2" }
+      );
+      Plotly.react(divId, traces, {
+        title: title,
+        xaxis: { title: "Time (s)" },
+        yaxis: { title: "Muscle force (N)" },
+        yaxis2: {
+          title: "CE velocity (m/s)",
+          overlaying: "y",
+          side: "right",
+          showgrid: false,
+          zeroline: true
+        },
+        margin: { l: 56, r: 64, t: 40, b: 48 },
+        legend: { orientation: "h" }
+      }, {displayModeBar:false});
+    }
+
     function plotLengths(divId, t, L, CE, SEC, title, opt = null) {
       const traces = [];
       if (opt) {
@@ -728,6 +795,7 @@ def run_all(p):
         el("cmjInfo").textContent = `CMJ depth matching OFF: applied t_on = ${tOn.toFixed(2)} s.`;
       }
 
+      // Plot each technique separately with optimal traces overlaid
       plotOne("knee_sq",  arr(sq.get("t")),  arr(sq.get("knee_deg")), "Knee angle", "deg", arr(sqOpt.get("t")), arr(sqOpt.get("knee_deg")));
       plotOne("knee_cat", arr(cat.get("t")), arr(cat.get("knee_deg")), "Knee angle", "deg", arr(catOpt.get("t")), arr(catOpt.get("knee_deg")));
       plotOne("knee_cmj", arr(cmj.get("t")), arr(cmj.get("knee_deg")), "Knee angle", "deg", arr(cmjOpt.get("t")), arr(cmjOpt.get("knee_deg")));
@@ -736,9 +804,13 @@ def run_all(p):
       plotOne("grf_cat", arr(cat.get("t")), arr(cat.get("grf_bw")), "GRF", "BW", arr(catOpt.get("t")), arr(catOpt.get("grf_bw")));
       plotOne("grf_cmj", arr(cmj.get("t")), arr(cmj.get("grf_bw")), "GRF", "BW", arr(cmjOpt.get("t")), arr(cmjOpt.get("grf_bw")));
 
-      plotOne("fm_sq",  arr(sq.get("t")),  arr(sq.get("Fm")), "Muscle force", "N", arr(sqOpt.get("t")), arr(sqOpt.get("Fm")));
-      plotOne("fm_cat", arr(cat.get("t")), arr(cat.get("Fm")), "Muscle force", "N", arr(catOpt.get("t")), arr(catOpt.get("Fm")));
-      plotOne("fm_cmj", arr(cmj.get("t")), arr(cmj.get("Fm")), "Muscle force", "N", arr(cmjOpt.get("t")), arr(cmjOpt.get("Fm")));
+      plotForceVelocity("fm_sq",  arr(sq.get("t")),  arr(sq.get("Fm")),  arr(sq.get("vCE")),  "Muscle force / CE velocity", arr(sqOpt.get("t")), arr(sqOpt.get("Fm")), arr(sqOpt.get("vCE")));
+      plotForceVelocity("fm_cat", arr(cat.get("t")), arr(cat.get("Fm")), arr(cat.get("vCE")), "Muscle force / CE velocity", arr(catOpt.get("t")), arr(catOpt.get("Fm")), arr(catOpt.get("vCE")));
+      plotForceVelocity("fm_cmj", arr(cmj.get("t")), arr(cmj.get("Fm")), arr(cmj.get("vCE")), "Muscle force / CE velocity", arr(cmjOpt.get("t")), arr(cmjOpt.get("Fm")), arr(cmjOpt.get("vCE")));
+
+      plotOne("vcom_sq",  arr(sq.get("t")),  arr(sq.get("vCoM")), "CoM velocity", "m/s", arr(sqOpt.get("t")), arr(sqOpt.get("vCoM")));
+      plotOne("vcom_cat", arr(cat.get("t")), arr(cat.get("vCoM")), "CoM velocity", "m/s", arr(catOpt.get("t")), arr(catOpt.get("vCoM")));
+      plotOne("vcom_cmj", arr(cmj.get("t")), arr(cmj.get("vCoM")), "CoM velocity", "m/s", arr(cmjOpt.get("t")), arr(cmjOpt.get("vCoM")));
 
       plotLengths("len_sq",  arr(sq.get("t")),  arr(sq.get("L")),  arr(sq.get("CE")),  arr(sq.get("SEC")),  "Lengths", { t: arr(sqOpt.get("t")), L: arr(sqOpt.get("L")), CE: arr(sqOpt.get("CE")), SEC: arr(sqOpt.get("SEC")) });
       plotLengths("len_cat", arr(cat.get("t")), arr(cat.get("L")), arr(cat.get("CE")), arr(cat.get("SEC")), "Lengths", { t: arr(catOpt.get("t")), L: arr(catOpt.get("L")), CE: arr(catOpt.get("CE")), SEC: arr(catOpt.get("SEC")) });
