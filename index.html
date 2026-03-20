@@ -144,6 +144,7 @@
     </div>
 
     <div id="cmjInfo" class="muted" style="margin-top:10px; display:none;"></div>
+    <div class="small" style="margin-top:8px;">Plots show the current setting as a solid line and the optimal setting as a faint dotted line.</div>
   </div>
 
   <div class="card">
@@ -230,24 +231,43 @@
     ["s","kneeStart","legFrac","C","secScale","Vmax","ceScale","Fiso","kMoment","tauAct","tOn","matchDepth"]
       .forEach(id => el(id).addEventListener("input", syncLabels));
     el("matchDepth").addEventListener("change", () => {
-      // reset tOn when switching modes for clarity
       el("tOn").value = el("matchDepth").checked ? "0.00" : "0.30";
       syncLabels();
     });
 
+    const OPTIMAL_PARAMS = {
+      s: 0.45,
+      knee_start_deg: 60,
+      leg_frac: 0.30,
+      C_base: 2e-6,
+      sec_scale: 0.00,
+      Vmax_base: 6.0,
+      ce_scale: 0.15,
+      Fm_iso: 6000,
+      k_moment: 0.00,
+      tau_act: 0.00,
+      match_depth: true,
+      t_control: 0.00,
+    };
+
+    function getOptimalParams() {
+      return { ...OPTIMAL_PARAMS };
+    }
+
     function resetOptimal() {
-      el("s").value = "0.45";
-      el("kneeStart").value = "60";
-      el("legFrac").value = "0.30";
-      el("C").value = "2e-6";
-      el("secScale").value = "0.00";
-      el("Vmax").value = "6.0";
-      el("ceScale").value = "0.15";
-      el("Fiso").value = "6000";
-      el("kMoment").value = "0.00";
-      el("tauAct").value = "0.00";
-      el("matchDepth").checked = true;
-      el("tOn").value = "0.00";
+      const p = getOptimalParams();
+      el("s").value = String(p.s);
+      el("kneeStart").value = String(p.knee_start_deg);
+      el("legFrac").value = String(p.leg_frac);
+      el("C").value = String(p.C_base);
+      el("secScale").value = String(p.sec_scale.toFixed(2));
+      el("Vmax").value = String(p.Vmax_base);
+      el("ceScale").value = String(p.ce_scale.toFixed(2));
+      el("Fiso").value = String(p.Fm_iso);
+      el("kMoment").value = String(p.k_moment.toFixed(2));
+      el("tauAct").value = String(p.tau_act.toFixed(2));
+      el("matchDepth").checked = p.match_depth;
+      el("tOn").value = String(p.t_control.toFixed(2));
       syncLabels();
     }
 
@@ -271,7 +291,6 @@
 import math
 import numpy as np
 
-# Web dt for speed
 DT = 5e-4
 T_MAX = 2.0
 
@@ -321,8 +340,6 @@ def moment_arm(theta, r0, k_moment):
     return r0 * (1.0 + (6.0 * k_moment / math.pi) * (theta - math.pi/3.0))
 
 def compliance_tuning_factor(C_eff, C_opt=2.0e-6):
-    # Teaching-oriented: best performance at moderate compliance.
-    # Too stiff or too compliant reduces effective performance.
     spread = 0.22
     log_dev = math.log10(max(C_eff, 1e-12) / C_opt)
     gaussian = math.exp(-0.5 * (log_dev / spread)**2)
@@ -338,7 +355,6 @@ def solve_ce_sec(theta, ydot, activation, l_ce_prev, F_prev, L_prev,
     dtheta_dt = (ydot * sec_t) / (2*s)
     r_curr = moment_arm(theta, r0, k_moment)
 
-    # extension -> MTU shortens
     v_mtu = -2.0 * r_curr * dtheta_dt
     L_new = L_prev + v_mtu * DT
 
@@ -362,14 +378,12 @@ def solve_ce_sec(theta, ydot, activation, l_ce_prev, F_prev, L_prev,
         F_ce = activation * force_velocity(v, Fm_iso, Vmax_eff)
         return F - F_ce
 
-    # fast fixed point first
     F = min(max(F_prev, F_low), F_high)
     for _ in range(8):
         v = vce_from_F(F)
         F_ce = activation * force_velocity(v, Fm_iso, Vmax_eff)
         F = 0.65*F + 0.35*min(max(F_ce, F_low), F_high)
 
-    # short bisection if bracketed
     f_low = f_of_F(F_low)
     f_high = f_of_F(F_high)
     if f_low * f_high <= 0.0:
@@ -534,7 +548,6 @@ def simulate_jump(technique, params, t_on):
     }
 
 def find_ton_for_target_knee(params, target_knee_deg):
-    # Fast coarse search (kept small for web). Returns best t_on and min_knee.
     candidates = np.linspace(0.05, 0.45, 13)
     best_err = 1e9
     best_t = 0.30
@@ -555,18 +568,16 @@ def run_all(p):
     except Exception:
         pass
 
-    # --- Inputs ---
     g = 9.81
     s = float(p["s"])
-    knee_start_deg = float(p["knee_start_deg"])  # 2*theta
+    knee_start_deg = float(p["knee_start_deg"])
     theta_min = math.radians(knee_start_deg/2.0)
     theta_straight = math.radians(179.0/2.0)
 
     m_total = 70.0
-    leg_frac = float(p["leg_frac"])  # (m2+m3)/m_total
+    leg_frac = float(p["leg_frac"])
     m_leg = leg_frac * m_total
     m1 = m_total - m_leg
-    # keep thigh:shank split fixed (2/3 : 1/3) but total leg mass varies
     m2 = (2.0/3.0) * m_leg
     m3 = (1.0/3.0) * m_leg
 
@@ -579,7 +590,7 @@ def run_all(p):
     sec_scale = float(p["sec_scale"])
     C_eff = C_base * (10.0 ** sec_scale)
 
-    Vmax_base = float(p["Vmax_base"])     # lengths/s (reference)
+    Vmax_base = float(p["Vmax_base"])
     ce_scale = float(p["ce_scale"])
     Vmax_eff = Vmax_base * (10.0 ** ce_scale)
 
@@ -638,23 +649,44 @@ def run_all(p):
       el("status").textContent = "Ready.";
     }
 
-    function plotOne(divId, t, y, title, yLabel) {
-      Plotly.react(divId, [
-        { x: t, y: y, mode: "lines" }
-      ], {
+    function plotOne(divId, t, y, title, yLabel, tOpt = null, yOpt = null) {
+      const traces = [];
+      if (tOpt && yOpt) {
+        traces.push({
+          x: tOpt,
+          y: yOpt,
+          mode: "lines",
+          name: "Optimal",
+          line: { dash: "dot", width: 2 },
+          opacity: 0.35,
+          hovertemplate: "Optimal<extra></extra>",
+        });
+      }
+      traces.push({ x: t, y: y, mode: "lines", name: "Current", hovertemplate: "Current<extra></extra>" });
+      Plotly.react(divId, traces, {
         title: title,
         xaxis: { title: "Time (s)" },
         yaxis: { title: yLabel },
         margin: { l: 56, r: 10, t: 40, b: 48 },
+        showlegend: false,
       }, {displayModeBar:false});
     }
 
-    function plotLengths(divId, t, L, CE, SEC, title) {
-      Plotly.react(divId, [
+    function plotLengths(divId, t, L, CE, SEC, title, opt = null) {
+      const traces = [];
+      if (opt) {
+        traces.push(
+          { x: opt.t, y: opt.L, mode:"lines", name:"MTU optimal", line:{dash:"dot", width:2}, opacity:0.28 },
+          { x: opt.t, y: opt.CE, mode:"lines", name:"CE optimal", line:{dash:"dot", width:2}, opacity:0.28 },
+          { x: opt.t, y: opt.SEC, mode:"lines", name:"SEC optimal", line:{dash:"dot", width:2}, opacity:0.28 },
+        );
+      }
+      traces.push(
         { x: t, y: L, mode:"lines", name:"MTU" },
         { x: t, y: CE, mode:"lines", name:"CE" },
         { x: t, y: SEC, mode:"lines", name:"SEC" },
-      ], {
+      );
+      Plotly.react(divId, traces, {
         title: title,
         xaxis: { title: "Time (s)" },
         yaxis: { title: "Length (relative)" },
@@ -663,10 +695,13 @@ def run_all(p):
       }, {displayModeBar:false});
     }
 
-    function render(out) {
+    function render(out, outOpt) {
       const sq = out.get("squat");
       const cat = out.get("catapult");
       const cmj = out.get("cmj");
+      const sqOpt = outOpt.get("squat");
+      const catOpt = outOpt.get("catapult");
+      const cmjOpt = outOpt.get("cmj");
 
       el("kpis").style.display = "grid";
       el("cmjInfo").style.display = "block";
@@ -693,22 +728,21 @@ def run_all(p):
         el("cmjInfo").textContent = `CMJ depth matching OFF: applied t_on = ${tOn.toFixed(2)} s.`;
       }
 
-      // Plot each technique separately
-      plotOne("knee_sq",  arr(sq.get("t")),  arr(sq.get("knee_deg")), "Knee angle", "deg");
-      plotOne("knee_cat", arr(cat.get("t")), arr(cat.get("knee_deg")), "Knee angle", "deg");
-      plotOne("knee_cmj", arr(cmj.get("t")), arr(cmj.get("knee_deg")), "Knee angle", "deg");
+      plotOne("knee_sq",  arr(sq.get("t")),  arr(sq.get("knee_deg")), "Knee angle", "deg", arr(sqOpt.get("t")), arr(sqOpt.get("knee_deg")));
+      plotOne("knee_cat", arr(cat.get("t")), arr(cat.get("knee_deg")), "Knee angle", "deg", arr(catOpt.get("t")), arr(catOpt.get("knee_deg")));
+      plotOne("knee_cmj", arr(cmj.get("t")), arr(cmj.get("knee_deg")), "Knee angle", "deg", arr(cmjOpt.get("t")), arr(cmjOpt.get("knee_deg")));
 
-      plotOne("grf_sq",  arr(sq.get("t")),  arr(sq.get("grf_bw")), "GRF", "BW");
-      plotOne("grf_cat", arr(cat.get("t")), arr(cat.get("grf_bw")), "GRF", "BW");
-      plotOne("grf_cmj", arr(cmj.get("t")), arr(cmj.get("grf_bw")), "GRF", "BW");
+      plotOne("grf_sq",  arr(sq.get("t")),  arr(sq.get("grf_bw")), "GRF", "BW", arr(sqOpt.get("t")), arr(sqOpt.get("grf_bw")));
+      plotOne("grf_cat", arr(cat.get("t")), arr(cat.get("grf_bw")), "GRF", "BW", arr(catOpt.get("t")), arr(catOpt.get("grf_bw")));
+      plotOne("grf_cmj", arr(cmj.get("t")), arr(cmj.get("grf_bw")), "GRF", "BW", arr(cmjOpt.get("t")), arr(cmjOpt.get("grf_bw")));
 
-      plotOne("fm_sq",  arr(sq.get("t")),  arr(sq.get("Fm")), "Muscle force", "N");
-      plotOne("fm_cat", arr(cat.get("t")), arr(cat.get("Fm")), "Muscle force", "N");
-      plotOne("fm_cmj", arr(cmj.get("t")), arr(cmj.get("Fm")), "Muscle force", "N");
+      plotOne("fm_sq",  arr(sq.get("t")),  arr(sq.get("Fm")), "Muscle force", "N", arr(sqOpt.get("t")), arr(sqOpt.get("Fm")));
+      plotOne("fm_cat", arr(cat.get("t")), arr(cat.get("Fm")), "Muscle force", "N", arr(catOpt.get("t")), arr(catOpt.get("Fm")));
+      plotOne("fm_cmj", arr(cmj.get("t")), arr(cmj.get("Fm")), "Muscle force", "N", arr(cmjOpt.get("t")), arr(cmjOpt.get("Fm")));
 
-      plotLengths("len_sq",  arr(sq.get("t")),  arr(sq.get("L")),  arr(sq.get("CE")),  arr(sq.get("SEC")),  "Lengths");
-      plotLengths("len_cat", arr(cat.get("t")), arr(cat.get("L")), arr(cat.get("CE")), arr(cat.get("SEC")), "Lengths");
-      plotLengths("len_cmj", arr(cmj.get("t")), arr(cmj.get("L")), arr(cmj.get("CE")), arr(cmj.get("SEC")), "Lengths");
+      plotLengths("len_sq",  arr(sq.get("t")),  arr(sq.get("L")),  arr(sq.get("CE")),  arr(sq.get("SEC")),  "Lengths", { t: arr(sqOpt.get("t")), L: arr(sqOpt.get("L")), CE: arr(sqOpt.get("CE")), SEC: arr(sqOpt.get("SEC")) });
+      plotLengths("len_cat", arr(cat.get("t")), arr(cat.get("L")), arr(cat.get("CE")), arr(cat.get("SEC")), "Lengths", { t: arr(catOpt.get("t")), L: arr(catOpt.get("L")), CE: arr(catOpt.get("CE")), SEC: arr(catOpt.get("SEC")) });
+      plotLengths("len_cmj", arr(cmj.get("t")), arr(cmj.get("L")), arr(cmj.get("CE")), arr(cmj.get("SEC")), "Lengths", { t: arr(cmjOpt.get("t")), L: arr(cmjOpt.get("L")), CE: arr(cmjOpt.get("CE")), SEC: arr(cmjOpt.get("SEC")) });
     }
 
     el("runBtn").addEventListener("click", async () => {
@@ -740,7 +774,9 @@ def run_all(p):
       try {
         pyodide.globals.set("JS_PARAMS", params);
         const out = await pyodide.runPythonAsync(`run_all(JS_PARAMS)`);
-        render(out);
+        pyodide.globals.set("JS_PARAMS_OPT", getOptimalParams());
+        const outOpt = await pyodide.runPythonAsync(`run_all(JS_PARAMS_OPT)`);
+        render(out, outOpt);
         el("status").textContent = "Done.";
       } catch (e) {
         console.error(e);
