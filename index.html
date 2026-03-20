@@ -78,7 +78,7 @@
 
     <div class="row">
       <label for="Vmax">Vmax (muscle lengths/s) — reference</label>
-      <input id="Vmax" type="range" min="2.0" max="10.0" step="0.1" value="6.0">
+      <input id="Vmax" type="range" min="2" max="10" step="0.1" value="6.0">
       <div><code id="Vmaxval"></code></div>
     </div>
 
@@ -101,7 +101,7 @@
     </div>
 
     <div class="row">
-      <label for="tauAct">Activation kinetics factor (log10 scale, relative to 0.020 s)</label>
+      <label for="tauAct">Activation kinetics factor (log10 scale)</label>
       <input id="tauAct" type="range" min="-0.50" max="0.50" step="0.05" value="0.00">
       <div><code id="tauActVal"></code></div>
     </div>
@@ -120,6 +120,7 @@
 
     <div style="margin-top:14px; display:flex; gap:12px; align-items:center;">
       <button id="runBtn" disabled>Loading…</button>
+      <button id="resetBtn" type="button">Reset to optimal</button>
       <span id="status" class="muted"></span>
     </div>
     <div id="err" class="err" style="margin-top:10px;"></div>
@@ -200,15 +201,21 @@
       el("kneeStartVal").textContent = `${Math.round(Number(el("kneeStart").value))}`;
       el("legFracVal").textContent = Number(el("legFrac").value).toFixed(2);
 
-      el("Cval").textContent = formatSci(el("C").value);
-      el("secScaleVal").textContent = `${(10 ** Number(el("secScale").value)).toFixed(2)} ×`;
+      const Cref = Number(el("C").value);
+      const Cmult = 10 ** Number(el("secScale").value);
+      el("Cval").textContent = `${formatSci(Cref)} → ${formatSci(Cref * Cmult)}`;
+      el("secScaleVal").textContent = `${Cmult.toFixed(2)} ×`;
 
-      el("Vmaxval").textContent = Number(el("Vmax").value).toFixed(1);
-      el("ceScaleVal").textContent = `${(10 ** Number(el("ceScale").value)).toFixed(2)} ×`;
+      const Vref = Number(el("Vmax").value);
+      const Vmult = 10 ** Number(el("ceScale").value);
+      el("Vmaxval").textContent = Vref.toFixed(1);
+      el("ceScaleVal").textContent = `${Vmult.toFixed(2)} ×`;
 
       el("Fisoval").textContent = Math.round(Number(el("Fiso").value)).toString();
       el("kMomentVal").textContent = Number(el("kMoment").value).toFixed(2);
-      el("tauActVal").textContent = `${(0.020 * (10 ** Number(el("tauAct").value))).toFixed(3)} s`;
+      const tauRef = 0.020;
+      const tauEff = tauRef * (10 ** Number(el("tauAct").value));
+      el("tauActVal").textContent = `${tauEff.toFixed(3)} s`;
 
       const md = el("matchDepth").checked;
       el("tOnLabel").textContent = md ? "CMJ timing: Δt offset (s)" : "CMJ timing: t_on (s)";
@@ -227,6 +234,24 @@
       el("tOn").value = el("matchDepth").checked ? "0.00" : "0.30";
       syncLabels();
     });
+
+    function resetOptimal() {
+      el("s").value = "0.45";
+      el("kneeStart").value = "60";
+      el("legFrac").value = "0.30";
+      el("C").value = "2e-6";
+      el("secScale").value = "0.00";
+      el("Vmax").value = "6.0";
+      el("ceScale").value = "0.15";
+      el("Fiso").value = "6000";
+      el("kMoment").value = "0.00";
+      el("tauAct").value = "0.00";
+      el("matchDepth").checked = true;
+      el("tOn").value = "0.00";
+      syncLabels();
+    }
+
+    el("resetBtn").addEventListener("click", resetOptimal);
     syncLabels();
 
     let pyodide;
@@ -256,18 +281,14 @@ def force_velocity(v_ce, F_iso, Vmax):
     if v_ce >= 0.0:
         denom = Vmax + 20.0*v_ce
         if abs(denom) < 1e-8:
-            return F_iso * 1.8
-        return F_iso * (1.8 - 0.8 * (Vmax - v_ce) / denom)
-
+            return F_iso * 1.7
+        return F_iso * (1.7 - 0.7 * (Vmax - v_ce) / denom)
     v_short = -v_ce
     if v_short >= Vmax:
         return 0.0
-
-    # Slightly steeper shortening branch so low-Vmax settings are more clearly disadvantaged,
-    # while remaining numerically stable for teaching use.
     x = v_short / max(Vmax, 1e-8)
-    a = 0.35
-    return F_iso * (1.0 - x) / (1.0 + a*x)
+    a = 0.30
+    return F_iso * max(0.0, (1.0 - x) / (1.0 + a*x))
 
 def compute_yddot(y, ydot, theta, T, s, g, m4, m5, m6):
     cos_t = math.cos(theta)
@@ -298,6 +319,14 @@ def compute_jump_height(y_off, ydot_off, m_total, g, m2, m3, m5, s):
 
 def moment_arm(theta, r0, k_moment):
     return r0 * (1.0 + (6.0 * k_moment / math.pi) * (theta - math.pi/3.0))
+
+def compliance_tuning_factor(C_eff, C_opt=2.0e-6):
+    # Teaching-oriented: best performance at moderate compliance.
+    # Too stiff or too compliant reduces effective performance.
+    spread = 0.22
+    log_dev = math.log10(max(C_eff, 1e-12) / C_opt)
+    gaussian = math.exp(-0.5 * (log_dev / spread)**2)
+    return 0.55 + 0.45 * gaussian
 
 def solve_ce_sec(theta, ydot, activation, l_ce_prev, F_prev, L_prev,
                 C_eff, Fm_iso, Vmax_eff, s, r0, k_moment):
@@ -547,15 +576,17 @@ def run_all(p):
     Fm_iso = float(p["Fm_iso"])
 
     C_base = float(p["C_base"])
-    sec_scale = 10.0 ** float(p["sec_scale"])
-    C_eff = C_base * sec_scale
+    sec_scale = float(p["sec_scale"])
+    C_eff = C_base * (10.0 ** sec_scale)
 
     Vmax_base = float(p["Vmax_base"])     # lengths/s (reference)
-    ce_scale = 10.0 ** float(p["ce_scale"])
-    Vmax_eff = Vmax_base * ce_scale
+    ce_scale = float(p["ce_scale"])
+    Vmax_eff = Vmax_base * (10.0 ** ce_scale)
 
     tau_ref = 0.020
     tau_act = tau_ref * (10.0 ** float(p["tau_act"]))
+
+    Fm_iso = Fm_iso * compliance_tuning_factor(C_eff)
 
     match_depth = bool(p["match_depth"])
     t_control = float(p["t_control"])
