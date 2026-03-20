@@ -65,26 +65,26 @@
     <hr style="border:none;border-top:1px solid #eee;margin:14px 0;">
 
     <div class="row">
-      <label for="C">SEC compliance C (m/N) — baseline</label>
-      <input id="C" type="range" min="0.2e-6" max="10e-6" step="0.1e-6" value="2e-6">
+      <label for="C">SEC compliance C (m/N) — reference</label>
+      <input id="C" type="range" min="0.5e-6" max="5e-6" step="0.1e-6" value="2e-6">
       <div><code id="Cval"></code></div>
     </div>
 
     <div class="row">
-      <label for="secScale">SEC length scale (multiplies effective compliance)</label>
-      <input id="secScale" type="range" min="0.5" max="2.0" step="0.05" value="1.0">
+      <label for="secScale">SEC compliance factor (log10 scale)</label>
+      <input id="secScale" type="range" min="-0.40" max="0.40" step="0.05" value="0.00">
       <div><code id="secScaleVal"></code></div>
     </div>
 
     <div class="row">
-      <label for="Vmax">Vmax (muscle lengths/s) — baseline</label>
-      <input id="Vmax" type="range" min="1" max="12" step="0.1" value="6.0">
+      <label for="Vmax">Vmax (muscle lengths/s) — reference</label>
+      <input id="Vmax" type="range" min="2.0" max="10.0" step="0.1" value="6.0">
       <div><code id="Vmaxval"></code></div>
     </div>
 
     <div class="row">
-      <label for="ceScale">CE length scale (multiplies effective Vmax in m/s)</label>
-      <input id="ceScale" type="range" min="0.5" max="2.0" step="0.05" value="1.0">
+      <label for="ceScale">Vmax factor (log10 scale)</label>
+      <input id="ceScale" type="range" min="-0.50" max="0.50" step="0.05" value="0.00">
       <div><code id="ceScaleVal"></code></div>
     </div>
 
@@ -101,8 +101,8 @@
     </div>
 
     <div class="row">
-      <label for="tauAct">Activation time constant τ_act (s)</label>
-      <input id="tauAct" type="range" min="0.002" max="0.060" step="0.002" value="0.020">
+      <label for="tauAct">Activation kinetics factor (log10 scale, relative to 0.020 s)</label>
+      <input id="tauAct" type="range" min="-0.50" max="0.50" step="0.05" value="0.00">
       <div><code id="tauActVal"></code></div>
     </div>
 
@@ -201,14 +201,14 @@
       el("legFracVal").textContent = Number(el("legFrac").value).toFixed(2);
 
       el("Cval").textContent = formatSci(el("C").value);
-      el("secScaleVal").textContent = Number(el("secScale").value).toFixed(2);
+      el("secScaleVal").textContent = `${(10 ** Number(el("secScale").value)).toFixed(2)} ×`;
 
       el("Vmaxval").textContent = Number(el("Vmax").value).toFixed(1);
-      el("ceScaleVal").textContent = Number(el("ceScale").value).toFixed(2);
+      el("ceScaleVal").textContent = `${(10 ** Number(el("ceScale").value)).toFixed(2)} ×`;
 
       el("Fisoval").textContent = Math.round(Number(el("Fiso").value)).toString();
       el("kMomentVal").textContent = Number(el("kMoment").value).toFixed(2);
-      el("tauActVal").textContent = Number(el("tauAct").value).toFixed(3);
+      el("tauActVal").textContent = `${(0.020 * (10 ** Number(el("tauAct").value))).toFixed(3)} s`;
 
       const md = el("matchDepth").checked;
       el("tOnLabel").textContent = md ? "CMJ timing: Δt offset (s)" : "CMJ timing: t_on (s)";
@@ -254,17 +254,20 @@ def force_velocity(v_ce, F_iso, Vmax):
     if abs(v_ce) < 1e-10:
         return F_iso
     if v_ce >= 0.0:
-        denom = Vmax + 23.0*v_ce
+        denom = Vmax + 20.0*v_ce
         if abs(denom) < 1e-8:
             return F_iso * 1.8
         return F_iso * (1.8 - 0.8 * (Vmax - v_ce) / denom)
+
     v_short = -v_ce
     if v_short >= Vmax:
         return 0.0
-    denom = Vmax - 3.0*v_ce
-    if abs(denom) < 1e-8:
-        return F_iso * 0.33
-    return F_iso * (Vmax + v_ce) / denom
+
+    # Slightly steeper shortening branch so low-Vmax settings are more clearly disadvantaged,
+    # while remaining numerically stable for teaching use.
+    x = v_short / max(Vmax, 1e-8)
+    a = 0.35
+    return F_iso * (1.0 - x) / (1.0 + a*x)
 
 def compute_yddot(y, ydot, theta, T, s, g, m4, m5, m6):
     cos_t = math.cos(theta)
@@ -544,16 +547,15 @@ def run_all(p):
     Fm_iso = float(p["Fm_iso"])
 
     C_base = float(p["C_base"])
-    sec_scale = float(p["sec_scale"])
+    sec_scale = 10.0 ** float(p["sec_scale"])
     C_eff = C_base * sec_scale
 
-    Vmax_base = float(p["Vmax_base"])     # lengths/s (baseline)
-    ce_scale = float(p["ce_scale"])
-    # Map to effective absolute velocity (m/s): treat ce_scale as setting an effective "fiber length scale"
-    # (longer CE => larger absolute Vmax for the same lengths/s)
+    Vmax_base = float(p["Vmax_base"])     # lengths/s (reference)
+    ce_scale = 10.0 ** float(p["ce_scale"])
     Vmax_eff = Vmax_base * ce_scale
 
-    tau_act = float(p["tau_act"])
+    tau_ref = 0.020
+    tau_act = tau_ref * (10.0 ** float(p["tau_act"]))
 
     match_depth = bool(p["match_depth"])
     t_control = float(p["t_control"])
