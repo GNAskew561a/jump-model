@@ -34,6 +34,15 @@
     .rowLabel { margin-top: 14px; font-weight: 650; }
     .toggleRow { display:flex; gap:10px; align-items:center; margin: 8px 0 2px 0; }
     .small { font-size: 0.9rem; color: #666; }
+    .tip { margin: 0 0 12px 0; color:#555; font-size:0.95rem; }
+    .group { border:1px solid #e7e7e7; border-radius: 14px; padding: 14px; margin: 14px 0; }
+    .group h3 { margin:0 0 8px 0; font-size:1rem; }
+    .group p { margin:0 0 10px 0; color:#666; font-size:0.9rem; }
+    .group-geom { background:#eef6ff; border-color:#d7e8ff; }
+    .group-muscle { background:#f3efff; border-color:#dfd6ff; }
+    .group-tendon { background:#eefaf1; border-color:#d4edd9; }
+    .group-cmj { background:#fff5ea; border-color:#ffe1bf; }
+    .row label span.help { display:block; font-weight:400; color:#666; font-size:0.82rem; margin-top:2px; }
   </style>
 </head>
 
@@ -43,65 +52,86 @@
 
   <div class="card">
     <h2>Controls</h2>
+    <p class="tip">Tip: change one parameter at a time and compare the solid line with the faint dotted optimal line.</p>
 
-    <div class="row">
-      <label for="s">Leg segment length s (m)</label>
-      <input id="s" type="range" min="0.30" max="0.60" step="0.01" value="0.45">
-      <div><code id="sval"></code></div>
+    <div class="group group-geom">
+      <h3>Geometry and mass</h3>
+      <p>These sliders change body size, starting position, and how much mass is in the moving leg segments.</p>
+
+      <div class="row">
+        <label for="s">Leg length (m)<span class="help">Distance from hip to foot.</span></label>
+        <input id="s" type="range" min="0.30" max="0.60" step="0.01" value="0.45">
+        <div><code id="sval"></code></div>
+      </div>
+
+      <div class="row">
+        <label for="kneeStart">Starting knee angle (deg)<span class="help">Initial knee angle at the start of the jump.</span></label>
+        <input id="kneeStart" type="range" min="40" max="120" step="1" value="60">
+        <div><code id="kneeStartVal"></code></div>
+      </div>
+
+      <div class="row">
+        <label for="legFrac">Leg mass (% body mass)<span class="help">Proportion of total body mass in the moving leg segments.</span></label>
+        <input id="legFrac" type="range" min="0.10" max="0.35" step="0.01" value="0.30">
+        <div><code id="legFracVal"></code></div>
+      </div>
     </div>
 
-    <div class="row">
-      <label for="kneeStart">Starting knee angle (2θ_start, deg)</label>
-      <input id="kneeStart" type="range" min="40" max="120" step="1" value="60">
-      <div><code id="kneeStartVal"></code></div>
+    <div class="group group-muscle">
+      <h3>Muscle properties</h3>
+      <p>These sliders control how much force the muscle can produce, how fast it can shorten, and how quickly it activates.</p>
+
+      <div class="row">
+        <label for="Vmax">Maximum muscle shortening velocity (lengths/s)<span class="help">Maximum speed the muscle fibres can shorten.</span></label>
+        <input id="Vmax" type="range" min="2" max="10" step="0.1" value="6.0">
+        <div><code id="Vmaxval"></code></div>
+      </div>
+
+      <div class="row">
+        <label for="Fiso">Maximum isometric muscle force (N)<span class="help">Peak force the muscle can produce without shortening.</span></label>
+        <input id="Fiso" type="range" min="1000" max="12000" step="100" value="6000">
+        <div><code id="Fisoval"></code></div>
+      </div>
+
+      <div class="row">
+        <label for="tauAct">Muscle activation kinetics<span class="help">How quickly the muscle turns on. Displayed value is the activation time constant.</span></label>
+        <input id="tauAct" type="range" min="-0.50" max="0.50" step="0.05" value="0.00">
+        <div><code id="tauActVal"></code></div>
+      </div>
+
+      <div class="row">
+        <label for="kMoment">Moment arm variation<span class="help">How muscle leverage changes with knee angle.</span></label>
+        <input id="kMoment" type="range" min="-0.5" max="0.5" step="0.02" value="0.0">
+        <div><code id="kMomentVal"></code></div>
+      </div>
     </div>
 
-    <div class="row">
-      <label for="legFrac">Leg mass fraction (m2+m3)/m_total</label>
-      <input id="legFrac" type="range" min="0.10" max="0.35" step="0.01" value="0.30">
-      <div><code id="legFracVal"></code></div>
+    <div class="group group-tendon">
+      <h3>Tendon property</h3>
+      <p>This slider changes how stretchy the series elastic component is.</p>
+
+      <div class="row">
+        <label for="C">Tendon compliance (m/N)<span class="help">Higher values mean a stretchier, less stiff tendon.</span></label>
+        <input id="C" type="range" min="0.5e-6" max="5e-6" step="0.1e-6" value="2e-6">
+        <div><code id="Cval"></code></div>
+      </div>
     </div>
 
-    <hr style="border:none;border-top:1px solid #eee;margin:14px 0;">
+    <div class="group group-cmj">
+      <h3>Countermovement jump timing</h3>
+      <p>These controls affect when the muscle turns on during the countermovement jump.</p>
 
-    <div class="row">
-      <label for="C">SEC compliance C (m/N)</label>
-      <input id="C" type="range" min="0.5e-6" max="5e-6" step="0.1e-6" value="2e-6">
-      <div><code id="Cval"></code></div>
-    </div>
-<div class="row">
-      <label for="Vmax">Vmax (muscle lengths/s)</label>
-      <input id="Vmax" type="range" min="2" max="10" step="0.1" value="6.0">
-      <div><code id="Vmaxval"></code></div>
-    </div>
-<div class="row">
-      <label for="Fiso">Fm_iso (N)</label>
-      <input id="Fiso" type="range" min="1000" max="12000" step="100" value="6000">
-      <div><code id="Fisoval"></code></div>
-    </div>
+      <div class="toggleRow">
+        <input id="matchDepth" type="checkbox" checked>
+        <label for="matchDepth"><b>Match countermovement depth to start angle</b></label>
+        <span class="small">Keeps CMJ depth comparable with the chosen starting knee angle.</span>
+      </div>
 
-    <div class="row">
-      <label for="kMoment">Moment-arm variation k_moment</label>
-      <input id="kMoment" type="range" min="-0.5" max="0.5" step="0.02" value="0.0">
-      <div><code id="kMomentVal"></code></div>
-    </div>
-
-    <div class="row">
-      <label for="tauAct">Activation kinetics factor (log10 scale)</label>
-      <input id="tauAct" type="range" min="-0.50" max="0.50" step="0.05" value="0.00">
-      <div><code id="tauActVal"></code></div>
-    </div>
-
-    <div class="toggleRow">
-      <input id="matchDepth" type="checkbox" checked>
-      <label for="matchDepth"><b>Match CMJ minimum knee angle to starting knee angle</b></label>
-      <span class="small">(Option 1)</span>
-    </div>
-
-    <div class="row">
-      <label id="tOnLabel" for="tOn">CMJ timing: Δt offset (s)</label>
-      <input id="tOn" type="range" min="-0.15" max="0.15" step="0.01" value="0.00">
-      <div><code id="tOnval"></code></div>
+      <div class="row">
+        <label id="tOnLabel" for="tOn">CMJ timing offset (s)<span class="help">Adjusts when the muscle activates during the countermovement jump.</span></label>
+        <input id="tOn" type="range" min="-0.15" max="0.15" step="0.01" value="0.00">
+        <div><code id="tOnval"></code></div>
+      </div>
     </div>
 
     <div style="margin-top:14px; display:flex; gap:12px; align-items:center;">
@@ -193,7 +223,7 @@
     function syncLabels() {
       el("sval").textContent = Number(el("s").value).toFixed(2);
       el("kneeStartVal").textContent = `${Math.round(Number(el("kneeStart").value))}`;
-      el("legFracVal").textContent = Number(el("legFrac").value).toFixed(2);
+      el("legFracVal").textContent = `${Math.round(Number(el("legFrac").value) * 100)}%`;
 
       const Cref = Number(el("C").value);
       el("Cval").textContent = `${formatSci(Cref)}`;
@@ -208,7 +238,7 @@
       el("tauActVal").textContent = `${tauEff.toFixed(3)} s`;
 
       const md = el("matchDepth").checked;
-      el("tOnLabel").textContent = md ? "CMJ timing: Δt offset (s)" : "CMJ timing: t_on (s)";
+      el("tOnLabel").innerHTML = md ? `CMJ timing offset (s)<span class="help">Adjusts when the muscle activates during the countermovement jump.</span>` : `CMJ muscle activation time (s)<span class="help">Directly sets the muscle activation time in the countermovement jump.</span>`;
       if (md) {
         el("tOn").min = -0.15; el("tOn").max = 0.15; el("tOn").step = 0.01;
       } else {
