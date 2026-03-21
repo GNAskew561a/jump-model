@@ -200,6 +200,13 @@
       <div id="vcom_cmj" class="plotBox"></div>
     </div>
 
+    <div class="rowLabel">SEC elastic energy (J)</div>
+    <div class="plotsGrid">
+      <div id="ese_sq" class="plotBox"></div>
+      <div id="ese_cat" class="plotBox"></div>
+      <div id="ese_cmj" class="plotBox"></div>
+    </div>
+
     <div class="rowLabel">Lengths (relative)</div>
     <div class="plotsGrid">
       <div id="len_sq" class="plotBox"></div>
@@ -541,6 +548,7 @@ def simulate_jump(technique, params, t_on):
     se_arr = np.array(se_hist)
     y_arr = np.array(y_hist)
     ydot_arr = np.array(ydot_hist)
+    Ese_arr = (se_arr ** 2) / (2.0 * max(C_eff, 1e-12))
 
     y_off = float(y_arr[-1]) if len(y_arr) else 0.0
     v_off = float(ydot_arr[-1]) if len(ydot_arr) else 0.0
@@ -553,6 +561,7 @@ def simulate_jump(technique, params, t_on):
       "Fm": Fm_arr,
       "vCE": np.array(vce_hist),
       "vCoM": ydot_arr,
+      "Ese": Ese_arr,
       "L": L_arr,
       "CE": ce_arr,
       "SEC": se_arr,
@@ -812,6 +821,10 @@ def run_all(p):
       plotOne("vcom_sq",  arr(sq.get("t")),  arr(sq.get("vCoM")), "CoM velocity", "m/s", arr(sqOpt.get("t")), arr(sqOpt.get("vCoM")));
       plotOne("vcom_cat", arr(cat.get("t")), arr(cat.get("vCoM")), "CoM velocity", "m/s", arr(catOpt.get("t")), arr(catOpt.get("vCoM")));
       plotOne("vcom_cmj", arr(cmj.get("t")), arr(cmj.get("vCoM")), "CoM velocity", "m/s", arr(cmjOpt.get("t")), arr(cmjOpt.get("vCoM")));
+
+      plotOne("ese_sq",  arr(sq.get("t")),  arr(sq.get("Ese")), "SEC elastic energy", "J", arr(sqOpt.get("t")), arr(sqOpt.get("Ese")));
+      plotOne("ese_cat", arr(cat.get("t")), arr(cat.get("Ese")), "SEC elastic energy", "J", arr(catOpt.get("t")), arr(catOpt.get("Ese")));
+      plotOne("ese_cmj", arr(cmj.get("t")), arr(cmj.get("Ese")), "SEC elastic energy", "J", arr(cmjOpt.get("t")), arr(cmjOpt.get("Ese")));
 
       plotLengths("len_sq",  arr(sq.get("t")),  arr(sq.get("L")),  arr(sq.get("CE")),  arr(sq.get("SEC")),  "Lengths", { t: arr(sqOpt.get("t")), L: arr(sqOpt.get("L")), CE: arr(sqOpt.get("CE")), SEC: arr(sqOpt.get("SEC")) });
       plotLengths("len_cat", arr(cat.get("t")), arr(cat.get("L")), arr(cat.get("CE")), arr(cat.get("SEC")), "Lengths", { t: arr(catOpt.get("t")), L: arr(catOpt.get("L")), CE: arr(catOpt.get("CE")), SEC: arr(catOpt.get("SEC")) });
