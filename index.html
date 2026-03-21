@@ -594,7 +594,7 @@ def simulate_jump(technique, params, t_on):
         L_mtu = l_ce
 
     while t < T_MAX:
-        if technique in ("squat", "catapult") and y < y_min_allowed:
+        if technique in ("squat", "catapult", "countermovement") and y < y_min_allowed:
             y = y_min_allowed
             if ydot < 0.0:
                 ydot = 0.0
