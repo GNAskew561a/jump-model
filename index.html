@@ -52,7 +52,7 @@
 
   <div class="card">
     <h2>Controls</h2>
-    <p class="tip">Tip: change one parameter at a time and compare the solid line with the faint dotted optimal line.</p>
+    <p class="tip">Tip: change one parameter at a time and compare the solid line with the faint dotted optimal line. This version follows Alexander (1995) closely for the CE–SEC mechanics, but includes a finite muscle activation time constant so force rises more realistically.</p>
 
     <div class="group group-geom">
       <h3>Geometry and mass</h3>
@@ -79,7 +79,7 @@
 
     <div class="group group-muscle">
       <h3>Muscle properties</h3>
-      <p>These sliders control how much force the muscle can produce, how fast it can shorten, and how quickly it activates.</p>
+      <p>These sliders control how much force the muscle can produce, how fast it can shorten, how quickly it activates, and how leverage changes with knee angle.</p>
 
       <div class="row">
         <label for="Vmax">Maximum muscle shortening velocity (lengths/s)<span class="help">Maximum speed the muscle fibres can shorten.</span></label>
@@ -94,15 +94,15 @@
       </div>
 
       <div class="row">
-        <label for="tauAct">Muscle activation kinetics<span class="help">How quickly the muscle turns on. Displayed value is the activation time constant.</span></label>
-        <input id="tauAct" type="range" min="-0.50" max="0.50" step="0.05" value="0.00">
-        <div><code id="tauActVal"></code></div>
-      </div>
-
-      <div class="row">
         <label for="kMoment">Moment arm variation<span class="help">How muscle leverage changes with knee angle.</span></label>
         <input id="kMoment" type="range" min="-0.5" max="0.5" step="0.02" value="0.0">
         <div><code id="kMomentVal"></code></div>
+      </div>
+
+      <div class="row">
+        <label for="tauAct">Muscle activation kinetics (s)<span class="help">Time constant for force rise after activation. Larger values mean slower activation.</span></label>
+        <input id="tauAct" type="range" min="0.005" max="0.080" step="0.001" value="0.020">
+        <div><code id="tauActVal"></code></div>
       </div>
     </div>
 
@@ -119,7 +119,7 @@
 
     <div class="group group-cmj">
       <h3>Countermovement jump timing</h3>
-      <p>These controls affect when the muscle turns on during the countermovement jump.</p>
+      <p>These controls affect when the muscle turns on during the countermovement jump. The tendon mechanics follow Alexander; activation rises with a finite time constant.</p>
 
       <div class="toggleRow">
         <input id="matchDepth" type="checkbox" checked>
@@ -233,9 +233,7 @@
 
       el("Fisoval").textContent = Math.round(Number(el("Fiso").value)).toString();
       el("kMomentVal").textContent = Number(el("kMoment").value).toFixed(2);
-      const tauRef = 0.020;
-      const tauEff = tauRef * (10 ** Number(el("tauAct").value));
-      el("tauActVal").textContent = `${tauEff.toFixed(3)} s`;
+      el("tauActVal").textContent = `${Number(el("tauAct").value).toFixed(3)} s`;
 
       const md = el("matchDepth").checked;
       el("tOnLabel").innerHTML = md ? `CMJ timing offset (s)<span class="help">Adjusts when the muscle activates during the countermovement jump.</span>` : `CMJ muscle activation time (s)<span class="help">Directly sets the muscle activation time in the countermovement jump.</span>`;
@@ -263,7 +261,7 @@
       Vmax_base: 8.5,
       Fm_iso: 6000,
       k_moment: 0.00,
-      tau_act: 0.00,
+      tau_act: 0.020,
       match_depth: true,
       t_control: 0.00,
     };
@@ -281,7 +279,7 @@
       el("Vmax").value = String(p.Vmax_base);
       el("Fiso").value = String(p.Fm_iso);
       el("kMoment").value = String(p.k_moment.toFixed(2));
-      el("tauAct").value = String(p.tau_act.toFixed(2));
+      el("tauAct").value = String(p.tau_act.toFixed(3));
       el("matchDepth").checked = p.match_depth;
       el("tOn").value = String(p.t_control.toFixed(2));
       syncLabels();
@@ -307,131 +305,112 @@
 import math
 import numpy as np
 
-# Web dt for speed
 DT = 5e-4
 T_MAX = 2.0
 
 def force_velocity(v_ce, F_iso, Vmax):
-    if abs(v_ce) < 1e-10:
-        return F_iso
-    if v_ce >= 0.0:
-        denom = Vmax + 20.0*v_ce
-        if abs(denom) < 1e-8:
-            return F_iso * 1.7
-        return F_iso * (1.7 - 0.7 * (Vmax - v_ce) / denom)
+    # v_ce > 0 : lengthening; v_ce < 0 : shortening
+    if v_ce > 0.0:
+        denom = Vmax + 2.3 * v_ce
+        if abs(denom) < 1e-12:
+            return 1.8 * F_iso
+        return F_iso * (1.8 - 0.8 * (Vmax - v_ce) / denom)
+
     v_short = -v_ce
+    if v_short <= 0.0:
+        return F_iso
     if v_short >= Vmax:
         return 0.0
-    x = v_short / max(Vmax, 1e-8)
-    a = 0.30
-    return F_iso * max(0.0, (1.0 - x) / (1.0 + a*x))
+
+    denom = 0.33 * Vmax - v_ce  # v_ce is negative during shortening
+    if abs(denom) < 1e-12:
+        return 0.0
+    return 0.33 * F_iso * (Vmax + v_ce) / denom
 
 def compute_yddot(y, ydot, theta, T, s, g, m4, m5, m6):
     cos_t = math.cos(theta)
     if abs(cos_t) < 1e-8:
         cos_t = 1e-8 if cos_t >= 0 else -1e-8
-    sec_t = 1.0/cos_t
+    sec_t = 1.0 / cos_t
     tan_t = math.tan(theta)
 
-    term1 = 48*T*sec_t
-    term2 = 6*m5*g*s
-    term3 = m4 * ydot**2 * tan_t * sec_t**3
-
-    denom = 2*s*(m6 + m4*tan_t**2)
-    if abs(denom) < 1e-12:
+    num = 48.0 * T * sec_t - 6.0 * m5 * g * s - m4 * ydot * ydot * tan_t * sec_t**3
+    den = 2.0 * s * (m6 + m4 * tan_t * tan_t)
+    if abs(den) < 1e-12:
         return 0.0
-
-    ydd = (term1 - term2 - term3) / denom
-    return max(min(ydd, 100.0), -50.0)
+    return num / den
 
 def compute_ground_force(yddot, m_total, g, m5):
-    return m_total*g + (m5/4)*yddot
+    return m_total * g + (m5 / 4.0) * yddot
 
 def compute_jump_height(y_off, ydot_off, m_total, g, m2, m3, m5, s):
-    term1 = y_off
-    term2 = (m5**2 * ydot_off**2) / (32*m_total**2*g)
-    term3 = (m2+3*m3)*(2*s - y_off)/(4*m_total)
-    return term1 + term2 + term3
+    return y_off + (m5 * m5 * ydot_off * ydot_off) / (32.0 * m_total * m_total * g) + ((m2 + 3.0 * m3) * (2.0 * s - y_off)) / (4.0 * m_total)
 
 def moment_arm(theta, r0, k_moment):
-    return r0 * (1.0 + (6.0 * k_moment / math.pi) * (theta - math.pi/3.0))
+    return r0 * (1.0 + (6.0 * k_moment / math.pi) * (theta - math.pi / 3.0))
 
-def compliance_tuning_factor(C_eff, C_opt=2.0e-6):
-    # Teaching-oriented: best performance at moderate compliance.
-    # Too stiff or too compliant reduces effective performance.
-    spread = 0.22
-    log_dev = math.log10(max(C_eff, 1e-12) / C_opt)
-    gaussian = math.exp(-0.5 * (log_dev / spread)**2)
-    return 0.55 + 0.45 * gaussian
-
-def solve_ce_sec(theta, ydot, activation, l_ce_prev, F_prev, L_prev,
-                C_eff, Fm_iso, Vmax_eff, s, r0, k_moment):
+def solve_ce_sec(theta, ydot, activation, l_ce_prev, L_prev, C_eff, Fm_iso, Vmax_eff, s, r0, k_moment):
     cos_t = math.cos(theta)
     if abs(cos_t) < 1e-8:
         cos_t = 1e-8 if cos_t >= 0 else -1e-8
     sec_t = 1.0 / cos_t
 
-    dtheta_dt = (ydot * sec_t) / (2*s)
+    dtheta_dt = (ydot * sec_t) / (2.0 * s)
     r_curr = moment_arm(theta, r0, k_moment)
 
-    # extension -> MTU shortens
+    # Alexander convention: muscle-tendon length change for both legs' knee extensors
+    # is partitioned between CE and SEC.
     v_mtu = -2.0 * r_curr * dtheta_dt
     L_new = L_prev + v_mtu * DT
 
-    if activation < 1e-6:
-        F_new = 0.0
+    if activation <= 1e-8:
         l_se_new = 0.0
         l_ce_new = L_new
         v_ce = (l_ce_new - l_ce_prev) / DT
-        return F_new, v_ce, L_new, l_ce_new, l_se_new
+        return 0.0, v_ce, L_new, l_ce_new, l_se_new
 
     F_low = 0.0
-    F_high = activation * 1.8 * Fm_iso
+    F_high = 1.8 * activation * Fm_iso
 
-    def vce_from_F(F):
-        l_ce_new_local = L_new - C_eff*F
-        v = (l_ce_new_local - l_ce_prev) / DT
-        return max(min(v, Vmax_eff), -Vmax_eff)
+    def residual(F):
+        l_se = C_eff * F
+        l_ce = L_new - l_se
+        v_ce = (l_ce - l_ce_prev) / DT
+        # physical cap at maximum shortening speed
+        v_ce = max(min(v_ce, Vmax_eff), -Vmax_eff)
+        return F - activation * force_velocity(v_ce, Fm_iso, Vmax_eff)
 
-    def f_of_F(F):
-        v = vce_from_F(F)
-        F_ce = activation * force_velocity(v, Fm_iso, Vmax_eff)
-        return F - F_ce
+    a = F_low
+    b = F_high
+    fa = residual(a)
+    fb = residual(b)
 
-    # fast fixed point first
-    F = min(max(F_prev, F_low), F_high)
-    for _ in range(8):
-        v = vce_from_F(F)
-        F_ce = activation * force_velocity(v, Fm_iso, Vmax_eff)
-        F = 0.65*F + 0.35*min(max(F_ce, F_low), F_high)
-
-    # short bisection if bracketed
-    f_low = f_of_F(F_low)
-    f_high = f_of_F(F_high)
-    if f_low * f_high <= 0.0:
-        a, b = F_low, F_high
-        fa = f_low
-        for _ in range(18):
-            mid = 0.5*(a+b)
-            fm = f_of_F(mid)
-            if abs(fm) < 1e-5:
+    if fa * fb > 0.0:
+        # fallback fixed-point / clamp
+        F = min(max(activation * Fm_iso, F_low), F_high)
+        for _ in range(30):
+            l_se = C_eff * F
+            l_ce = L_new - l_se
+            v_ce = (l_ce - l_ce_prev) / DT
+            v_ce = max(min(v_ce, Vmax_eff), -Vmax_eff)
+            F_target = activation * force_velocity(v_ce, Fm_iso, Vmax_eff)
+            F = 0.5 * F + 0.5 * min(max(F_target, F_low), F_high)
+    else:
+        for _ in range(40):
+            mid = 0.5 * (a + b)
+            fm = residual(mid)
+            if abs(fm) < 1e-8:
                 a = b = mid
                 break
-            if fa*fm <= 0.0:
+            if fa * fm <= 0.0:
                 b = mid
+                fb = fm
             else:
                 a = mid
                 fa = fm
-        F = 0.5*(a+b)
+        F = 0.5 * (a + b)
 
-    F_target = min(max(F, F_low), F_high)
-
-    # Mild tendon-force damping to smooth abrupt CE velocity reversals
-    # without materially changing the overall jump mechanics.
-    tau_force = 0.003
-    alpha_force = min(DT / tau_force, 1.0)
-    F_new = F_prev + alpha_force * (F_target - F_prev)
-
+    F_new = min(max(F, F_low), F_high)
     l_se_new = C_eff * F_new
     l_ce_new = L_new - l_se_new
     v_ce = (l_ce_new - l_ce_prev) / DT
@@ -441,9 +420,9 @@ def solve_ce_sec(theta, ydot, activation, l_ce_prev, F_prev, L_prev,
 def simulate_jump(technique, params, t_on):
     g = params["g"]; s = params["s"]
     m_total = params["m_total"]; m1 = params["m1"]; m2 = params["m2"]; m3 = params["m3"]
-    m4 = m2+m3
-    m5 = 4*m1 + 3*m2 + m3
-    m6 = 12*m1 + 7*m2 + m3
+    m4 = m2 + m3
+    m5 = 4.0 * m1 + 3.0 * m2 + m3
+    m6 = 12.0 * m1 + 7.0 * m2 + m3
 
     r0 = params["r0"]; k_moment = params["k_moment"]
     Fm_iso = params["Fm_iso"]
@@ -457,25 +436,25 @@ def simulate_jump(technique, params, t_on):
     t_hist=[]; theta_hist=[]; y_hist=[]; ydot_hist=[]
     Fg_hist=[]; Fm_hist=[]; vce_hist=[]; L_hist=[]; ce_hist=[]; se_hist=[]
 
-    y_min_allowed = 2*s*math.sin(theta_min)
+    y_min_allowed = 2.0 * s * math.sin(theta_min)
 
-    if technique == 'squat':
+    if technique == "squat":
         theta = theta_min
-        y = 2*s*math.sin(theta)
+        y = 2.0 * s * math.sin(theta)
         ydot = 0.0
         movement_started = False
         muscle_active = True
         activation = 0.0
-    elif technique == 'catapult':
+    elif technique == "catapult":
         theta = theta_min
-        y = 2*s*math.sin(theta)
+        y = 2.0 * s * math.sin(theta)
         ydot = 0.0
         movement_started = True
         muscle_active = True
         activation = 1.0
-    elif technique == 'countermovement':
+    elif technique == "countermovement":
         theta = theta_straight
-        y = 2*s*math.sin(theta)
+        y = 2.0 * s * math.sin(theta)
         ydot = 0.0
         movement_started = True
         muscle_active = False
@@ -483,36 +462,41 @@ def simulate_jump(technique, params, t_on):
     else:
         raise ValueError("Unknown technique")
 
-    t=0.0
+    t = 0.0
     l_ce = 0.0
-    Fm = Fm_iso if technique=='catapult' else 0.0
-    L_mtu = l_ce + C_eff*Fm
+    if technique == "catapult":
+        Fm = Fm_iso
+        L_mtu = l_ce + C_eff * Fm
+    else:
+        Fm = 0.0
+        L_mtu = l_ce
 
     while t < T_MAX:
-        if technique in ('squat','catapult') and y < y_min_allowed:
+        if technique in ("squat", "catapult") and y < y_min_allowed:
             y = y_min_allowed
-            if ydot < 0: ydot = 0
+            if ydot < 0.0:
+                ydot = 0.0
 
-        arg = min(max(y/(2*s), 0.001), 0.999)
+        arg = min(max(y / (2.0 * s), 0.001), 0.999)
         theta = math.asin(arg)
 
-        if technique=='countermovement' and (not muscle_active) and t>=t_on:
+        if technique == "countermovement" and (not muscle_active) and t >= t_on:
             muscle_active = True
 
-        target = 1.0 if muscle_active else 0.0
-        activation += (target - activation) * (DT/tau_act)
-        activation = min(max(activation,0.0),1.0)
+        target_activation = 1.0 if muscle_active else 0.0
+        activation += (target_activation - activation) * (DT / max(tau_act, DT))
+        activation = min(max(activation, 0.0), 1.0)
 
         Fm, v_ce, L_mtu, l_ce, l_se = solve_ce_sec(
-            theta, ydot, activation, l_ce, Fm, L_mtu,
+            theta, ydot, activation, l_ce, L_mtu,
             C_eff, Fm_iso, Vmax_eff, s, r0, k_moment
         )
 
         T = Fm * moment_arm(theta, r0, k_moment)
         ydd = compute_yddot(y, ydot, theta, T, s, g, m4, m5, m6)
 
-        if technique=='squat' and not movement_started:
-            if ydd > 0:
+        if technique == "squat" and not movement_started:
+            if ydd > 0.0:
                 movement_started = True
                 yddot = ydd
             else:
@@ -534,16 +518,16 @@ def simulate_jump(technique, params, t_on):
         ce_hist.append(l_ce)
         se_hist.append(l_se)
 
-        if Fg <= 0 and t>0 and movement_started:
+        if Fg <= 0.0 and t > 0.0 and movement_started:
             break
 
-        if movement_started or technique!='squat':
-            ydot += yddot*DT
-            y += ydot*DT
+        if movement_started or technique != "squat":
+            ydot += yddot * DT
+            y += ydot * DT
 
-        if y > 2*s:
-            y = 2*s
-            if ydot > 0:
+        if y > 2.0 * s:
+            y = 2.0 * s
+            if ydot > 0.0:
                 break
 
         t += DT
@@ -558,14 +542,14 @@ def simulate_jump(technique, params, t_on):
     y_arr = np.array(y_hist)
     ydot_arr = np.array(ydot_hist)
 
-    y_off = float(y_arr[-1])
+    y_off = float(y_arr[-1]) if len(y_arr) else 0.0
     v_off = float(ydot_arr[-1]) if len(ydot_arr) else 0.0
     h = float(compute_jump_height(y_off, v_off, m_total, g, m2, m3, m5, s))
 
     return {
       "t": t_arr,
-      "knee_deg": 2*np.degrees(theta_arr),
-      "grf_bw": Fg_arr/(m_total*g),
+      "knee_deg": 2.0 * np.degrees(theta_arr),
+      "grf_bw": Fg_arr / (m_total * g),
       "Fm": Fm_arr,
       "vCE": np.array(vce_hist),
       "vCoM": ydot_arr,
@@ -573,14 +557,13 @@ def simulate_jump(technique, params, t_on):
       "CE": ce_arr,
       "SEC": se_arr,
       "h": h,
-      "min_knee": float(np.min(2*np.degrees(theta_arr))) if len(theta_arr) else float("nan"),
-      "peak_grf_bw": float(np.max(Fg_arr/(m_total*g))) if len(Fg_arr) else 0.0,
+      "min_knee": float(np.min(2.0 * np.degrees(theta_arr))) if len(theta_arr) else float("nan"),
+      "peak_grf_bw": float(np.max(Fg_arr / (m_total * g))) if len(Fg_arr) else 0.0,
       "peak_Fm": float(np.max(Fm_arr)) if len(Fm_arr) else 0.0,
       "contact_time": float(t_arr[-1]) if len(t_arr) else 0.0,
     }
 
 def find_ton_for_target_knee(params, target_knee_deg):
-    # Fast coarse search (kept small for web). Returns best t_on and min_knee.
     candidates = np.linspace(0.05, 0.45, 13)
     best_err = 1e9
     best_t = 0.30
@@ -601,34 +584,24 @@ def run_all(p):
     except Exception:
         pass
 
-    # --- Inputs ---
     g = 9.81
     s = float(p["s"])
-    knee_start_deg = float(p["knee_start_deg"])  # 2*theta
-    theta_min = math.radians(knee_start_deg/2.0)
-    theta_straight = math.radians(179.0/2.0)
+    knee_start_deg = float(p["knee_start_deg"])
+    theta_min = math.radians(knee_start_deg / 2.0)
+    theta_straight = math.radians(179.0 / 2.0)
 
     m_total = 70.0
-    leg_frac = float(p["leg_frac"])  # (m2+m3)/m_total
+    leg_frac = float(p["leg_frac"])
     m_leg = leg_frac * m_total
     m1 = m_total - m_leg
-    # keep thigh:shank split fixed (2/3 : 1/3) but total leg mass varies
-    m2 = (2.0/3.0) * m_leg
-    m3 = (1.0/3.0) * m_leg
+    m2 = (2.0 / 3.0) * m_leg
+    m3 = (1.0 / 3.0) * m_leg
 
     r0 = 0.04
     k_moment = float(p["k_moment"])
-
     Fm_iso = float(p["Fm_iso"])
-
     C_eff = float(p["C_base"])
-
-    Vmax_eff = float(p["Vmax_base"])  # lengths/s
-
-    tau_ref = 0.020
-    tau_act = tau_ref * (10.0 ** float(p["tau_act"]))
-
-    Fm_iso = Fm_iso * compliance_tuning_factor(C_eff)
+    Vmax_eff = float(p["Vmax_base"])
 
     match_depth = bool(p["match_depth"])
     t_control = float(p["t_control"])
@@ -663,11 +636,11 @@ def run_all(p):
       "squat": sq, "catapult": cat, "cmj": cmj,
       "cmj_t_on": float(t_on),
       "cmj_mode": chosen_mode,
-      "cmj_t_base": float(base) if base==base else None,
-      "cmj_min_knee_at_base": float(min_k) if min_k==min_k else None,
+      "cmj_t_base": float(base) if base == base else None,
+      "cmj_min_knee_at_base": float(min_k) if min_k == min_k else None,
       "target_knee": float(knee_start_deg),
     }
-`;
+`;`;
 
     async function init() {
       el("status").textContent = "Loading Python runtime…";
@@ -846,7 +819,6 @@ def run_all(p):
 
         Fm_iso: Number(el("Fiso").value),
         k_moment: Number(el("kMoment").value),
-        tau_act: Number(el("tauAct").value),
 
         match_depth: matchDepth,
         t_control: Number(el("tOn").value),
