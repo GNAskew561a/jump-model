@@ -642,15 +642,31 @@ def run_all(p):
     }
 `;
 
+    window.addEventListener("error", (e) => {
+      el("status").textContent = "JavaScript error.";
+      el("err").textContent = String(e.message || e.error || e);
+    });
+    window.addEventListener("unhandledrejection", (e) => {
+      el("status").textContent = "Loading error.";
+      el("err").textContent = String(e.reason || e);
+    });
+
     async function init() {
-      el("status").textContent = "Loading Python runtime…";
-      pyodide = await loadPyodide();
-      el("status").textContent = "Loading numpy…";
-      await pyodide.loadPackage(["numpy"]);
-      await pyodide.runPythonAsync(MODEL_PY);
-      el("runBtn").disabled = false;
-      el("runBtn").textContent = "Run simulation";
-      el("status").textContent = "Ready.";
+      try {
+        el("status").textContent = "Loading Python runtime…";
+        pyodide = await loadPyodide();
+        el("status").textContent = "Loading numpy…";
+        await pyodide.loadPackage(["numpy"]);
+        el("status").textContent = "Preparing model…";
+        await pyodide.runPythonAsync(MODEL_PY);
+        el("runBtn").disabled = false;
+        el("runBtn").textContent = "Run simulation";
+        el("status").textContent = "Ready.";
+      } catch (e) {
+        console.error(e);
+        el("status").textContent = "Loading error.";
+        el("err").textContent = String(e);
+      }
     }
 
     function plotOne(divId, t, y, title, yLabel, tOpt = null, yOpt = null) {
@@ -819,6 +835,7 @@ def run_all(p):
 
         Fm_iso: Number(el("Fiso").value),
         k_moment: Number(el("kMoment").value),
+        tau_act: Number(el("tauAct").value),
 
         match_depth: matchDepth,
         t_control: Number(el("tOn").value),
