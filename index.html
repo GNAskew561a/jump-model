@@ -43,6 +43,9 @@
     .group-tendon { background:#eefaf1; border-color:#d4edd9; }
     .group-cmj { background:#fff5ea; border-color:#ffe1bf; }
     .row label span.help { display:block; font-weight:400; color:#666; font-size:0.82rem; margin-top:2px; }
+    .presetBar { display:flex; gap:10px; flex-wrap:wrap; margin:10px 0 6px 0; }
+    .presetBtn.active { background:#e7f0ff; border-color:#8fb3ff; font-weight:650; }
+    .presetInfo { margin:6px 0 0 0; font-size:0.92rem; color:#555; }
   </style>
 </head>
 
@@ -52,7 +55,18 @@
 
   <div class="card">
     <h2>Controls</h2>
-    <p class="tip">Tip: change one parameter at a time and compare the solid line with the faint dotted optimal line. This version follows Alexander (1995) closely for the CE–SEC mechanics, but includes a finite muscle activation time constant so force rises more realistically.</p>
+    <p class="tip">Tip: choose a preset animal, then change one parameter at a time and compare the solid line with the faint dotted preset line. This version follows Alexander (1995) closely for the CE–SEC mechanics, but includes a finite muscle activation time constant so force rises more realistically.</p>
+
+    <div class="group">
+      <h3>Animal preset</h3>
+      <p>These buttons set body mass and a sensible starting set of slider values for a human, bushbaby, or insect. You can then vary the sliders away from that preset.</p>
+      <div class="presetBar">
+        <button id="presetHuman" class="presetBtn" type="button">Human</button>
+        <button id="presetBushbaby" class="presetBtn" type="button">Bushbaby</button>
+        <button id="presetInsect" class="presetBtn" type="button">Insect</button>
+      </div>
+      <div id="presetInfo" class="presetInfo"></div>
+    </div>
 
     <div class="group group-geom">
       <h3>Geometry and mass</h3>
@@ -60,19 +74,19 @@
 
       <div class="row">
         <label for="s">Leg length (m)<span class="help">Distance from hip to foot.</span></label>
-        <input id="s" type="range" min="0.30" max="0.60" step="0.01" value="0.45">
+        <input id="s" type="range" min="0.02" max="0.60" step="0.001" value="0.45">
         <div><code id="sval"></code></div>
       </div>
 
       <div class="row">
         <label for="kneeStart">Starting knee angle (deg)<span class="help">Initial knee angle at the start of the jump.</span></label>
-        <input id="kneeStart" type="range" min="40" max="120" step="1" value="60">
+        <input id="kneeStart" type="range" min="5" max="120" step="1" value="60">
         <div><code id="kneeStartVal"></code></div>
       </div>
 
       <div class="row">
         <label for="legFrac">Leg mass (% body mass)<span class="help">Proportion of total body mass in the moving leg segments.</span></label>
-        <input id="legFrac" type="range" min="0.10" max="0.35" step="0.01" value="0.30">
+        <input id="legFrac" type="range" min="0.03" max="0.35" step="0.005" value="0.30">
         <div><code id="legFracVal"></code></div>
       </div>
     </div>
@@ -82,14 +96,14 @@
       <p>These sliders control how much force the muscle can produce, how fast it can shorten, how quickly it activates, and how leverage changes with knee angle.</p>
 
       <div class="row">
-        <label for="Vmax">Maximum muscle shortening velocity (lengths/s)<span class="help">Maximum speed the muscle fibres can shorten.</span></label>
-        <input id="Vmax" type="range" min="2" max="10" step="0.1" value="6.0">
+        <label for="Vmax">Maximum CE shortening speed (m/s)<span class="help">Maximum speed of the contractile element.</span></label>
+        <input id="Vmax" type="range" min="0.05" max="2.00" step="0.01" value="1.50">
         <div><code id="Vmaxval"></code></div>
       </div>
 
       <div class="row">
         <label for="Fiso">Maximum isometric muscle force (N)<span class="help">Peak force the muscle can produce without shortening.</span></label>
-        <input id="Fiso" type="range" min="1000" max="12000" step="100" value="6000">
+        <input id="Fiso" type="range" min="1" max="8000" step="1" value="7716">
         <div><code id="Fisoval"></code></div>
       </div>
 
@@ -101,7 +115,7 @@
 
       <div class="row">
         <label for="tauAct">Muscle activation kinetics (s)<span class="help">Time constant for force rise after activation. Larger values mean slower activation.</span></label>
-        <input id="tauAct" type="range" min="0.005" max="0.080" step="0.001" value="0.020">
+        <input id="tauAct" type="range" min="0.001" max="0.080" step="0.001" value="0.020">
         <div><code id="tauActVal"></code></div>
       </div>
     </div>
@@ -112,7 +126,7 @@
 
       <div class="row">
         <label for="C">Tendon compliance (m/N)<span class="help">Higher values mean a stretchier, less stiff tendon.</span></label>
-        <input id="C" type="range" min="0.5e-6" max="5e-6" step="0.1e-6" value="2e-6">
+        <input id="C" type="range" min="1e-6" max="1e-3" step="1e-6" value="5.2e-6">
         <div><code id="Cval"></code></div>
       </div>
     </div>
@@ -136,7 +150,7 @@
 
     <div style="margin-top:14px; display:flex; gap:12px; align-items:center;">
       <button id="runBtn" disabled>Loading…</button>
-      <button id="resetBtn" type="button">Reset to optimal</button>
+      <button id="resetBtn" type="button">Reset to preset</button>
       <span id="status" class="muted"></span>
     </div>
     <div id="err" class="err" style="margin-top:10px;"></div>
@@ -160,7 +174,7 @@
     </div>
 
     <div id="cmjInfo" class="muted" style="margin-top:10px; display:none;"></div>
-    <div class="small" style="margin-top:8px;">Plots show the current setting as a solid line and the optimal setting as a faint dotted line.</div>
+    <div class="small" style="margin-top:8px;">Plots show the current setting as a solid line and the selected preset as a faint dotted line.</div>
   </div>
 
   <div class="card">
@@ -228,7 +242,7 @@
     }
 
     function syncLabels() {
-      el("sval").textContent = Number(el("s").value).toFixed(2);
+      el("sval").textContent = Number(el("s").value).toFixed(3);
       el("kneeStartVal").textContent = `${Math.round(Number(el("kneeStart").value))}`;
       el("legFracVal").textContent = `${Math.round(Number(el("legFrac").value) * 100)}%`;
 
@@ -236,9 +250,10 @@
       el("Cval").textContent = `${formatSci(Cref)}`;
 
       const Vref = Number(el("Vmax").value);
-      el("Vmaxval").textContent = Vref.toFixed(1);
+      el("Vmaxval").textContent = Vref.toFixed(3);
 
-      el("Fisoval").textContent = Math.round(Number(el("Fiso").value)).toString();
+      const Fiso = Number(el("Fiso").value);
+      el("Fisoval").textContent = Fiso >= 100 ? Math.round(Fiso).toString() : Fiso.toFixed(1);
       el("kMomentVal").textContent = Number(el("kMoment").value).toFixed(2);
       el("tauActVal").textContent = `${Number(el("tauAct").value).toFixed(3)} s`;
 
@@ -250,35 +265,127 @@
         el("tOn").min = 0.05; el("tOn").max = 0.45; el("tOn").step = 0.01;
       }
       el("tOnval").textContent = Number(el("tOn").value).toFixed(2);
+
+      const preset = PRESETS[currentPreset];
+      el("presetInfo").textContent = `${preset.label}: body mass ${preset.body_mass} kg · leg length ${preset.s} m · default jump style emphasis ${preset.styleHint}.`;
     }
 
     ["s","kneeStart","legFrac","C","Vmax","Fiso","kMoment","tauAct","tOn","matchDepth"]
       .forEach(id => el(id).addEventListener("input", syncLabels));
     el("matchDepth").addEventListener("change", () => {
-      // reset tOn when switching modes for clarity
       el("tOn").value = el("matchDepth").checked ? "0.00" : "0.30";
       syncLabels();
     });
 
-    const OPTIMAL_PARAMS = {
-      s: 0.45,
-      knee_start_deg: 60,
-      leg_frac: 0.30,
-      C_base: 2e-6,
-      Vmax_base: 8.5,
-      Fm_iso: 6000,
-      k_moment: 0.00,
-      tau_act: 0.020,
-      match_depth: true,
-      t_control: 0.00,
+    const PRESETS = {
+      human: {
+        label: "Human",
+        styleHint: "countermovement",
+        body_mass: 70.0,
+        s: 0.45,
+        knee_start_deg: 60,
+        leg_frac: 0.30,
+        C_base: 5.2e-6,
+        Vmax_base: 1.50,
+        Fm_iso: 7716,
+        k_moment: 0.00,
+        tau_act: 0.020,
+        match_depth: true,
+        t_control: 0.00,
+        ranges: {
+          s: [0.30, 0.70, 0.01],
+          kneeStart: [30, 120, 1],
+          legFrac: [0.15, 0.35, 0.01],
+          C: [1e-6, 2e-5, 1e-6],
+          Vmax: [0.60, 2.50, 0.01],
+          Fiso: [3000, 12000, 50],
+          tauAct: [0.005, 0.080, 0.001]
+        }
+      },
+      bushbaby: {
+        label: "Bushbaby",
+        styleHint: "countermovement",
+        body_mass: 0.30,
+        s: 0.12,
+        knee_start_deg: 30,
+        leg_frac: 0.24,
+        C_base: 6.5e-5,
+        Vmax_base: 0.77,
+        Fm_iso: 165,
+        k_moment: 0.00,
+        tau_act: 0.010,
+        match_depth: true,
+        t_control: 0.00,
+        ranges: {
+          s: [0.06, 0.20, 0.001],
+          kneeStart: [10, 90, 1],
+          legFrac: [0.10, 0.30, 0.005],
+          C: [1e-5, 1.5e-4, 1e-6],
+          Vmax: [0.20, 1.50, 0.01],
+          Fiso: [30, 400, 1],
+          tauAct: [0.002, 0.030, 0.001]
+        }
+      },
+      insect: {
+        label: "Insect",
+        styleHint: "catapult",
+        body_mass: 0.002,
+        s: 0.020,
+        knee_start_deg: 10,
+        leg_frac: 0.17,
+        C_base: 3.23e-4,
+        Vmax_base: 0.08,
+        Fm_iso: 5.5,
+        k_moment: 0.00,
+        tau_act: 0.003,
+        match_depth: false,
+        t_control: 0.30,
+        ranges: {
+          s: [0.008, 0.060, 0.001],
+          kneeStart: [2, 60, 1],
+          legFrac: [0.03, 0.22, 0.005],
+          C: [5e-5, 1.0e-3, 1e-6],
+          Vmax: [0.02, 0.30, 0.005],
+          Fiso: [1, 25, 0.1],
+          tauAct: [0.001, 0.010, 0.0005]
+        }
+      }
     };
 
-    function getOptimalParams() {
-      return { ...OPTIMAL_PARAMS };
+    let currentPreset = "human";
+
+    function setRange(id, min, max, step) {
+      el(id).min = String(min);
+      el(id).max = String(max);
+      el(id).step = String(step);
     }
 
-    function resetOptimal() {
+    function applyPresetRanges(name) {
+      const r = PRESETS[name].ranges;
+      setRange("s", ...r.s);
+      setRange("kneeStart", ...r.kneeStart);
+      setRange("legFrac", ...r.legFrac);
+      setRange("C", ...r.C);
+      setRange("Vmax", ...r.Vmax);
+      setRange("Fiso", ...r.Fiso);
+      setRange("tauAct", ...r.tauAct);
+    }
+
+    function updatePresetButtons() {
+      ["human","bushbaby","insect"].forEach(name => {
+        const map = {human:"presetHuman", bushbaby:"presetBushbaby", insect:"presetInsect"};
+        el(map[name]).classList.toggle("active", name === currentPreset);
+      });
+    }
+
+    function getOptimalParams() {
+      return { ...PRESETS[currentPreset] };
+    }
+
+    function applyPreset(name) {
+      currentPreset = name;
       const p = getOptimalParams();
+      applyPresetRanges(name);
       el("s").value = String(p.s);
       el("kneeStart").value = String(p.knee_start_deg);
       el("legFrac").value = String(p.leg_frac);
@@ -289,11 +396,19 @@
       el("tauAct").value = String(p.tau_act.toFixed(3));
       el("matchDepth").checked = p.match_depth;
       el("tOn").value = String(p.t_control.toFixed(2));
+      updatePresetButtons();
       syncLabels();
     }
 
+    function resetOptimal() {
+      applyPreset(currentPreset);
+    }
+
+    el("presetHuman").addEventListener("click", () => applyPreset("human"));
+    el("presetBushbaby").addEventListener("click", () => applyPreset("bushbaby"));
+    el("presetInsect").addEventListener("click", () => applyPreset("insect"));
     el("resetBtn").addEventListener("click", resetOptimal);
-    syncLabels();
+    applyPreset("human");
 
     let pyodide;
 
@@ -599,14 +714,14 @@ def run_all(p):
     theta_min = math.radians(knee_start_deg / 2.0)
     theta_straight = math.radians(179.0 / 2.0)
 
-    m_total = 70.0
+    m_total = float(p["body_mass"])
     leg_frac = float(p["leg_frac"])
     m_leg = leg_frac * m_total
     m1 = m_total - m_leg
     m2 = (2.0 / 3.0) * m_leg
     m3 = (1.0 / 3.0) * m_leg
 
-    r0 = 0.04
+    r0 = 0.089 * s
     k_moment = float(p["k_moment"])
     Fm_iso = float(p["Fm_iso"])
     C_eff = float(p["C_base"])
@@ -686,10 +801,10 @@ def run_all(p):
           x: tOpt,
           y: yOpt,
           mode: "lines",
-          name: "Optimal",
+          name: "Preset",
           line: { dash: "dot", width: 2 },
           opacity: 0.35,
-          hovertemplate: "Optimal<extra></extra>",
+          hovertemplate: "Preset<extra></extra>",
         });
       }
       traces.push({ x: t, y: y, mode: "lines", name: "Current", hovertemplate: "Current<extra></extra>" });
@@ -839,6 +954,7 @@ def run_all(p):
       const matchDepth = el("matchDepth").checked;
 
       const params = {
+        body_mass: PRESETS[currentPreset].body_mass,
         s: Number(el("s").value),
         knee_start_deg: Number(el("kneeStart").value),
         leg_frac: Number(el("legFrac").value),
