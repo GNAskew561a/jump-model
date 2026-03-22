@@ -83,13 +83,13 @@
 
       <div class="row">
         <label for="Vmax">Maximum muscle shortening velocity (lengths/s)<span class="help">Maximum speed the muscle fibres can shorten.</span></label>
-        <input id="Vmax" type="range" min="2" max="10" step="0.1" value="6.0">
+        <input id="Vmax" type="range" min="2" max="15" step="0.1" value="8.5">
         <div><code id="Vmaxval"></code></div>
       </div>
 
       <div class="row">
-        <label for="Fiso">Maximum isometric muscle force (N)<span class="help">Peak force the muscle can produce without shortening.</span></label>
-        <input id="Fiso" type="range" min="1000" max="12000" step="100" value="6000">
+        <label for="Fiso">Maximum isometric muscle force (× body weight)<span class="help">Dimensionless force relative to body weight. For this human model, 1 × BW ≈ 687 N.</span></label>
+        <input id="Fiso" type="range" min="1.5" max="17.5" step="0.1" value="8.7">
         <div><code id="Fisoval"></code></div>
       </div>
 
@@ -101,7 +101,7 @@
 
       <div class="row">
         <label for="tauAct">Muscle activation kinetics (s)<span class="help">Time constant for force rise after activation. Larger values mean slower activation.</span></label>
-        <input id="tauAct" type="range" min="0.005" max="0.080" step="0.001" value="0.020">
+        <input id="tauAct" type="range" min="0.005" max="0.200" step="0.001" value="0.020">
         <div><code id="tauActVal"></code></div>
       </div>
     </div>
@@ -220,6 +220,9 @@
 
   <script>
     const el = (id) => document.getElementById(id);
+    const M_TOTAL = 70.0;
+    const G = 9.81;
+    const BODY_WEIGHT_N = M_TOTAL * G;
 
     function formatSci(x) {
       const v = Number(x);
@@ -238,7 +241,9 @@
       const Vref = Number(el("Vmax").value);
       el("Vmaxval").textContent = Vref.toFixed(1);
 
-      el("Fisoval").textContent = Math.round(Number(el("Fiso").value)).toString();
+      const fMult = Number(el("Fiso").value);
+      el("Fisoval").textContent = `${fMult.toFixed(1)} × BW`;
+
       el("kMomentVal").textContent = Number(el("kMoment").value).toFixed(2);
       el("tauActVal").textContent = `${Number(el("tauAct").value).toFixed(3)} s`;
 
@@ -255,7 +260,6 @@
     ["s","kneeStart","legFrac","C","Vmax","Fiso","kMoment","tauAct","tOn","matchDepth"]
       .forEach(id => el(id).addEventListener("input", syncLabels));
     el("matchDepth").addEventListener("change", () => {
-      // reset tOn when switching modes for clarity
       el("tOn").value = el("matchDepth").checked ? "0.00" : "0.30";
       syncLabels();
     });
@@ -266,7 +270,7 @@
       leg_frac: 0.30,
       C_base: 2e-6,
       Vmax_base: 8.5,
-      Fm_iso: 6000,
+      Fm_iso_mult: 6000 / BODY_WEIGHT_N,
       k_moment: 0.00,
       tau_act: 0.020,
       match_depth: true,
@@ -284,7 +288,7 @@
       el("legFrac").value = String(p.leg_frac);
       el("C").value = String(p.C_base);
       el("Vmax").value = String(p.Vmax_base);
-      el("Fiso").value = String(p.Fm_iso);
+      el("Fiso").value = String(p.Fm_iso_mult.toFixed(1));
       el("kMoment").value = String(p.k_moment.toFixed(2));
       el("tauAct").value = String(p.tau_act.toFixed(3));
       el("matchDepth").checked = p.match_depth;
@@ -316,7 +320,6 @@ DT = 5e-4
 T_MAX = 2.0
 
 def force_velocity(v_ce, F_iso, Vmax):
-    # v_ce > 0 : lengthening; v_ce < 0 : shortening
     if v_ce > 0.0:
         denom = Vmax + 2.3 * v_ce
         if abs(denom) < 1e-12:
@@ -329,7 +332,7 @@ def force_velocity(v_ce, F_iso, Vmax):
     if v_short >= Vmax:
         return 0.0
 
-    denom = 0.33 * Vmax - v_ce  # v_ce is negative during shortening
+    denom = 0.33 * Vmax - v_ce
     if abs(denom) < 1e-12:
         return 0.0
     return 0.33 * F_iso * (Vmax + v_ce) / denom
@@ -365,8 +368,6 @@ def solve_ce_sec(theta, ydot, activation, l_ce_prev, L_prev, C_eff, Fm_iso, Vmax
     dtheta_dt = (ydot * sec_t) / (2.0 * s)
     r_curr = moment_arm(theta, r0, k_moment)
 
-    # Alexander convention: muscle-tendon length change for both legs' knee extensors
-    # is partitioned between CE and SEC.
     v_mtu = -2.0 * r_curr * dtheta_dt
     L_new = L_prev + v_mtu * DT
 
@@ -383,7 +384,6 @@ def solve_ce_sec(theta, ydot, activation, l_ce_prev, L_prev, C_eff, Fm_iso, Vmax
         l_se = C_eff * F
         l_ce = L_new - l_se
         v_ce = (l_ce - l_ce_prev) / DT
-        # physical cap at maximum shortening speed
         v_ce = max(min(v_ce, Vmax_eff), -Vmax_eff)
         return F - activation * force_velocity(v_ce, Fm_iso, Vmax_eff)
 
@@ -393,7 +393,6 @@ def solve_ce_sec(theta, ydot, activation, l_ce_prev, L_prev, C_eff, Fm_iso, Vmax
     fb = residual(b)
 
     if fa * fb > 0.0:
-        # fallback fixed-point / clamp
         F = min(max(activation * Fm_iso, F_low), F_high)
         for _ in range(30):
             l_se = C_eff * F
@@ -608,7 +607,7 @@ def run_all(p):
 
     r0 = 0.04
     k_moment = float(p["k_moment"])
-    Fm_iso = float(p["Fm_iso"])
+    Fm_iso = float(p["Fm_iso_mult"]) * m_total * g
     C_eff = float(p["C_base"])
     Vmax_eff = float(p["Vmax_base"])
     tau_act = float(p["tau_act"])
@@ -701,7 +700,6 @@ def run_all(p):
         showlegend: false,
       }, {displayModeBar:false});
     }
-
 
     function plotForceVelocity(divId, tF, F, vCE, title, tOpt = null, FOpt = null, vCEOpt = null) {
       const traces = [];
@@ -805,7 +803,6 @@ def run_all(p):
         el("cmjInfo").textContent = `CMJ depth matching OFF: applied t_on = ${tOn.toFixed(2)} s.`;
       }
 
-      // Plot each technique separately with optimal traces overlaid
       plotOne("knee_sq",  arr(sq.get("t")),  arr(sq.get("knee_deg")), "Knee angle", "deg", arr(sqOpt.get("t")), arr(sqOpt.get("knee_deg")));
       plotOne("knee_cat", arr(cat.get("t")), arr(cat.get("knee_deg")), "Knee angle", "deg", arr(catOpt.get("t")), arr(catOpt.get("knee_deg")));
       plotOne("knee_cmj", arr(cmj.get("t")), arr(cmj.get("knee_deg")), "Knee angle", "deg", arr(cmjOpt.get("t")), arr(cmjOpt.get("knee_deg")));
@@ -842,15 +839,11 @@ def run_all(p):
         s: Number(el("s").value),
         knee_start_deg: Number(el("kneeStart").value),
         leg_frac: Number(el("legFrac").value),
-
         C_base: Number(el("C").value),
-
         Vmax_base: Number(el("Vmax").value),
-
-        Fm_iso: Number(el("Fiso").value),
+        Fm_iso_mult: Number(el("Fiso").value),
         k_moment: Number(el("kMoment").value),
         tau_act: Number(el("tauAct").value),
-
         match_depth: matchDepth,
         t_control: Number(el("tOn").value),
       };
