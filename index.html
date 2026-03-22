@@ -43,6 +43,9 @@
     .group-tendon { background:#eefaf1; border-color:#d4edd9; }
     .group-cmj { background:#fff5ea; border-color:#ffe1bf; }
     .row label span.help { display:block; font-weight:400; color:#666; font-size:0.82rem; margin-top:2px; }
+    .presetBar { display:flex; gap:10px; flex-wrap:wrap; margin: 10px 0 16px 0; }
+    .presetBtn.active { background:#e8f0ff; border-color:#9fb8ff; }
+    .bodyMassBadge { display:inline-block; margin-left:10px; color:#555; font-size:0.95rem; }
   </style>
 </head>
 
@@ -52,7 +55,14 @@
 
   <div class="card">
     <h2>Controls</h2>
-    <p class="tip">Tip: change one parameter at a time and compare the solid line with the faint dotted optimal line. This version follows Alexander (1995) closely for the CE–SEC mechanics, but includes a finite muscle activation time constant so force rises more realistically.</p>
+    <p class="tip">Tip: change one parameter at a time and compare the solid line with the faint dotted preset line. Body mass is set by the animal preset. Maximum muscle force is shown relative to body weight, which matches Alexander’s dimensionless force parameter more closely.</p>
+    <div class="presetBar">
+      <button id="presetHuman" class="presetBtn" type="button">Human</button>
+      <button id="presetBushbaby" class="presetBtn" type="button">Bushbaby</button>
+      <button id="presetInsect" class="presetBtn" type="button">Insect</button>
+      <span class="bodyMassBadge">Body mass: <code id="bodyMassVal"></code></span>
+    </div>
+
 
     <div class="group group-geom">
       <h3>Geometry and mass</h3>
@@ -75,6 +85,12 @@
         <input id="legFrac" type="range" min="0.10" max="0.35" step="0.01" value="0.30">
         <div><code id="legFracVal"></code></div>
       </div>
+
+      <div class="row">
+        <label>Body mass (kg)<span class="help">Set by the selected animal preset.</span></label>
+        <div></div>
+        <div><code id="bodyMassVal2"></code></div>
+      </div>
     </div>
 
     <div class="group group-muscle">
@@ -88,8 +104,8 @@
       </div>
 
       <div class="row">
-        <label for="Fiso">Maximum isometric muscle force (N)<span class="help">Peak force the muscle can produce without shortening.</span></label>
-        <input id="Fiso" type="range" min="1000" max="12000" step="100" value="6000">
+        <label for="Fiso">Maximum isometric muscle force (× body weight)<span class="help">Dimensionless force relative to body weight, matching Alexander more closely.</span></label>
+        <input id="Fiso" type="range" min="0.5" max="3.0" step="0.1" value="1.0">
         <div><code id="Fisoval"></code></div>
       </div>
 
@@ -136,7 +152,7 @@
 
     <div style="margin-top:14px; display:flex; gap:12px; align-items:center;">
       <button id="runBtn" disabled>Loading…</button>
-      <button id="resetBtn" type="button">Reset to optimal</button>
+      <button id="resetBtn" type="button">Reset to preset</button>
       <span id="status" class="muted"></span>
     </div>
     <div id="err" class="err" style="margin-top:10px;"></div>
@@ -227,18 +243,96 @@
       return v.toExponential(2);
     }
 
+    let currentPresetName = "human";
+    let currentBodyMass = 70.0;
+
+    const PRESETS = {
+      human: {
+        label: "Human",
+        body_mass: 70.0,
+        defaults: { s: 0.45, knee_start_deg: 60, leg_frac: 0.30, C_base: 2.0e-6, Vmax_base: 8.5, Fm_iso_bw: 1.0, k_moment: 0.00, tau_act: 0.020, match_depth: true, t_control: 0.00 },
+        ranges: { s:[0.35,0.60,0.01], knee:[40,110,1], legFrac:[0.20,0.35,0.01], C:[0.5e-6,8e-6,0.1e-6], Vmax:[4.0,12.0,0.1], Fiso:[0.5,3.0,0.1], tau:[0.005,0.080,0.001] }
+      },
+      bushbaby: {
+        label: "Bushbaby",
+        body_mass: 0.30,
+        defaults: { s: 0.12, knee_start_deg: 30, leg_frac: 0.30, C_base: 7.0e-4, Vmax_base: 2.5, Fm_iso_bw: 5.0, k_moment: 0.00, tau_act: 0.010, match_depth: true, t_control: 0.00 },
+        ranges: { s:[0.08,0.18,0.005], knee:[20,80,1], legFrac:[0.20,0.35,0.01], C:[1e-4,2e-3,5e-5], Vmax:[0.8,4.0,0.05], Fiso:[2.0,10.0,0.2], tau:[0.003,0.030,0.001] }
+      },
+      insect: {
+        label: "Insect",
+        body_mass: 0.002,
+        defaults: { s: 0.015, knee_start_deg: 16, leg_frac: 0.12, C_base: 2.5e-2, Vmax_base: 0.15, Fm_iso_bw: 25.0, k_moment: 0.00, tau_act: 0.005, match_depth: true, t_control: 0.00 },
+        ranges: { s:[0.005,0.030,0.001], knee:[10,45,1], legFrac:[0.05,0.20,0.005], C:[5e-3,5e-2,5e-4], Vmax:[0.03,0.40,0.01], Fiso:[10.0,35.0,0.5], tau:[0.001,0.015,0.0005] }
+      }
+    };
+
+    function setSliderRange(id, min, max, step) {
+      el(id).min = String(min);
+      el(id).max = String(max);
+      el(id).step = String(step);
+    }
+
+    function updatePresetButtons() {
+      ["Human","Bushbaby","Insect"].forEach(name => {
+        const btn = el("preset" + name);
+        if (!btn) return;
+        btn.classList.toggle("active", currentPresetName === name.toLowerCase());
+      });
+    }
+
+    function applyPreset(name, resetValues = true) {
+      const p = PRESETS[name];
+      currentPresetName = name;
+      currentBodyMass = p.body_mass;
+      setSliderRange("s", ...p.ranges.s);
+      setSliderRange("kneeStart", ...p.ranges.knee);
+      setSliderRange("legFrac", ...p.ranges.legFrac);
+      setSliderRange("C", ...p.ranges.C);
+      setSliderRange("Vmax", ...p.ranges.Vmax);
+      setSliderRange("Fiso", ...p.ranges.Fiso);
+      setSliderRange("tauAct", ...p.ranges.tau);
+      if (resetValues) {
+        el("s").value = String(p.defaults.s);
+        el("kneeStart").value = String(p.defaults.knee_start_deg);
+        el("legFrac").value = String(p.defaults.leg_frac);
+        el("C").value = String(p.defaults.C_base);
+        el("Vmax").value = String(p.defaults.Vmax_base);
+        el("Fiso").value = String(p.defaults.Fm_iso_bw);
+        el("kMoment").value = String(p.defaults.k_moment.toFixed(2));
+        el("tauAct").value = String(p.defaults.tau_act);
+        el("matchDepth").checked = p.defaults.match_depth;
+        el("tOn").value = String(p.defaults.t_control.toFixed(2));
+      }
+      updatePresetButtons();
+      syncLabels();
+    }
+
+    function getOptimalParams() {
+      const p = PRESETS[currentPresetName];
+      return { body_mass: p.body_mass, ...p.defaults };
+    }
+
+    function resetOptimal() {
+      applyPreset(currentPresetName, true);
+    }
+
     function syncLabels() {
-      el("sval").textContent = Number(el("s").value).toFixed(2);
+      el("sval").textContent = Number(el("s").value).toFixed(3);
       el("kneeStartVal").textContent = `${Math.round(Number(el("kneeStart").value))}`;
       el("legFracVal").textContent = `${Math.round(Number(el("legFrac").value) * 100)}%`;
+      el("bodyMassVal").textContent = `${currentBodyMass.toFixed(currentBodyMass < 1 ? 3 : 1)} kg`;
+      el("bodyMassVal2").textContent = `${currentBodyMass.toFixed(currentBodyMass < 1 ? 3 : 1)} kg`;
 
       const Cref = Number(el("C").value);
       el("Cval").textContent = `${formatSci(Cref)}`;
 
       const Vref = Number(el("Vmax").value);
-      el("Vmaxval").textContent = Vref.toFixed(1);
+      el("Vmaxval").textContent = Vref.toFixed(currentBodyMass < 0.01 ? 2 : 1);
 
-      el("Fisoval").textContent = Math.round(Number(el("Fiso").value)).toString();
+      const fRel = Number(el("Fiso").value);
+      const fAbs = fRel * currentBodyMass * 9.81;
+      el("Fisoval").textContent = `${fRel.toFixed(1)} × BW (${Math.round(fAbs)} N)`;
       el("kMomentVal").textContent = Number(el("kMoment").value).toFixed(2);
       el("tauActVal").textContent = `${Number(el("tauAct").value).toFixed(3)} s`;
 
@@ -252,48 +346,17 @@
       el("tOnval").textContent = Number(el("tOn").value).toFixed(2);
     }
 
-    ["s","kneeStart","legFrac","C","Vmax","Fiso","kMoment","tauAct","tOn","matchDepth"]
-      .forEach(id => el(id).addEventListener("input", syncLabels));
+    ["s","kneeStart","legFrac","C","Vmax","Fiso","kMoment","tauAct","tOn","matchDepth"].forEach(id => el(id).addEventListener("input", syncLabels));
     el("matchDepth").addEventListener("change", () => {
-      // reset tOn when switching modes for clarity
       el("tOn").value = el("matchDepth").checked ? "0.00" : "0.30";
       syncLabels();
     });
 
-    const OPTIMAL_PARAMS = {
-      s: 0.45,
-      knee_start_deg: 60,
-      leg_frac: 0.30,
-      C_base: 2e-6,
-      Vmax_base: 8.5,
-      Fm_iso: 6000,
-      k_moment: 0.00,
-      tau_act: 0.020,
-      match_depth: true,
-      t_control: 0.00,
-    };
-
-    function getOptimalParams() {
-      return { ...OPTIMAL_PARAMS };
-    }
-
-    function resetOptimal() {
-      const p = getOptimalParams();
-      el("s").value = String(p.s);
-      el("kneeStart").value = String(p.knee_start_deg);
-      el("legFrac").value = String(p.leg_frac);
-      el("C").value = String(p.C_base);
-      el("Vmax").value = String(p.Vmax_base);
-      el("Fiso").value = String(p.Fm_iso);
-      el("kMoment").value = String(p.k_moment.toFixed(2));
-      el("tauAct").value = String(p.tau_act.toFixed(3));
-      el("matchDepth").checked = p.match_depth;
-      el("tOn").value = String(p.t_control.toFixed(2));
-      syncLabels();
-    }
-
+    el("presetHuman").addEventListener("click", () => applyPreset("human", true));
+    el("presetBushbaby").addEventListener("click", () => applyPreset("bushbaby", true));
+    el("presetInsect").addEventListener("click", () => applyPreset("insect", true));
     el("resetBtn").addEventListener("click", resetOptimal);
-    syncLabels();
+    applyPreset("human", true);
 
     let pyodide;
 
@@ -479,7 +542,7 @@ def simulate_jump(technique, params, t_on):
         L_mtu = l_ce
 
     while t < T_MAX:
-        if technique in ("squat", "catapult") and y < y_min_allowed:
+        if y < y_min_allowed:
             y = y_min_allowed
             if ydot < 0.0:
                 ydot = 0.0
@@ -599,16 +662,16 @@ def run_all(p):
     theta_min = math.radians(knee_start_deg / 2.0)
     theta_straight = math.radians(179.0 / 2.0)
 
-    m_total = 70.0
+    m_total = float(p["body_mass"])
     leg_frac = float(p["leg_frac"])
     m_leg = leg_frac * m_total
     m1 = m_total - m_leg
     m2 = (2.0 / 3.0) * m_leg
     m3 = (1.0 / 3.0) * m_leg
 
-    r0 = 0.04
+    r0 = 0.04 * (s / 0.45)
     k_moment = float(p["k_moment"])
-    Fm_iso = float(p["Fm_iso"])
+    Fm_iso = float(p["Fm_iso_bw"]) * m_total * g
     C_eff = float(p["C_base"])
     Vmax_eff = float(p["Vmax_base"])
     tau_act = float(p["tau_act"])
@@ -847,7 +910,8 @@ def run_all(p):
 
         Vmax_base: Number(el("Vmax").value),
 
-        Fm_iso: Number(el("Fiso").value),
+        body_mass: currentBodyMass,
+        Fm_iso_bw: Number(el("Fiso").value),
         k_moment: Number(el("kMoment").value),
         tau_act: Number(el("tauAct").value),
 
