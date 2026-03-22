@@ -186,12 +186,19 @@
       <div id="grf_cmj" class="plotBox"></div>
     </div>
 
-    <div class="rowLabel">Muscle force (N) and CE velocity (m/s)</div>
+    <div class="rowLabel">Muscle force (N)</div>
     <div class="plotsGrid">
       <div id="fm_sq" class="plotBox"></div>
       <div id="fm_cat" class="plotBox"></div>
       <div id="fm_cmj" class="plotBox"></div>
     </div>
+
+<div class="rowLabel">CE velocity (m/s)</div>
+<div class="plotsGrid">
+  <div id="vce_sq" class="plotBox"></div>
+  <div id="vce_cat" class="plotBox"></div>
+  <div id="vce_cmj" class="plotBox"></div>
+</div>
 
     <div class="rowLabel">CoM velocity (m/s)</div>
     <div class="plotsGrid">
@@ -811,9 +818,13 @@ def run_all(p):
       plotOne("grf_cat", arr(cat.get("t")), arr(cat.get("grf_bw")), "GRF", "BW", arr(catOpt.get("t")), arr(catOpt.get("grf_bw")));
       plotOne("grf_cmj", arr(cmj.get("t")), arr(cmj.get("grf_bw")), "GRF", "BW", arr(cmjOpt.get("t")), arr(cmjOpt.get("grf_bw")));
 
-      plotForceVelocity("fm_sq",  arr(sq.get("t")),  arr(sq.get("Fm")),  arr(sq.get("vCE")),  "Muscle force / CE velocity", arr(sqOpt.get("t")), arr(sqOpt.get("Fm")), arr(sqOpt.get("vCE")));
-      plotForceVelocity("fm_cat", arr(cat.get("t")), arr(cat.get("Fm")), arr(cat.get("vCE")), "Muscle force / CE velocity", arr(catOpt.get("t")), arr(catOpt.get("Fm")), arr(catOpt.get("vCE")));
-      plotForceVelocity("fm_cmj", arr(cmj.get("t")), arr(cmj.get("Fm")), arr(cmj.get("vCE")), "Muscle force / CE velocity", arr(cmjOpt.get("t")), arr(cmjOpt.get("Fm")), arr(cmjOpt.get("vCE")));
+      plotOne("fm_sq",  arr(sq.get("t")),  arr(sq.get("Fm")),  "Muscle force", "N",   arr(sqOpt.get("t")),  arr(sqOpt.get("Fm")));
+      plotOne("fm_cat", arr(cat.get("t")), arr(cat.get("Fm")), "Muscle force", "N",   arr(catOpt.get("t")), arr(catOpt.get("Fm")));
+      plotOne("fm_cmj", arr(cmj.get("t")), arr(cmj.get("Fm")), "Muscle force", "N",   arr(cmjOpt.get("t")), arr(cmjOpt.get("Fm")));
+
+      plotOne("vce_sq",  arr(sq.get("t")),  arr(sq.get("vCE")),  "CE velocity", "m/s",   arr(sqOpt.get("t")),  arr(sqOpt.get("vCE")));
+      plotOne("vce_cat", arr(cat.get("t")), arr(cat.get("vCE")), "CE velocity", "m/s",   arr(catOpt.get("t")), arr(catOpt.get("vCE")));
+      plotOne("vce_cmj", arr(cmj.get("t")), arr(cmj.get("vCE")), "CE velocity", "m/s",   arr(cmjOpt.get("t")), arr(cmjOpt.get("vCE")));
 
       plotOne("vcom_sq",  arr(sq.get("t")),  arr(sq.get("vCoM")), "CoM velocity", "m/s", arr(sqOpt.get("t")), arr(sqOpt.get("vCoM")));
       plotOne("vcom_cat", arr(cat.get("t")), arr(cat.get("vCoM")), "CoM velocity", "m/s", arr(catOpt.get("t")), arr(catOpt.get("vCoM")));
