@@ -207,11 +207,11 @@
       <div id="vcom_cmj" class="plotBox"></div>
     </div>
 
-    <div class="rowLabel">SEC elastic energy (J)</div>
+    <div class="rowLabel">Energy terms (J)</div>
     <div class="plotsGrid">
-      <div id="ese_sq" class="plotBox"></div>
-      <div id="ese_cat" class="plotBox"></div>
-      <div id="ese_cmj" class="plotBox"></div>
+      <div id="energy_sq" class="plotBox"></div>
+      <div id="energy_cat" class="plotBox"></div>
+      <div id="energy_cmj" class="plotBox"></div>
     </div>
 
     <div class="rowLabel">Lengths (relative)</div>
@@ -555,6 +555,13 @@ def simulate_jump(technique, params, t_on):
     y_arr = np.array(y_hist)
     ydot_arr = np.array(ydot_hist)
     Ese_arr = (se_arr ** 2) / (2.0 * max(C_eff, 1e-12))
+    vce_arr = np.array(vce_hist)
+    Pce_arr = -Fm_arr * vce_arr
+    Wce_arr = np.cumsum(Pce_arr) * DT
+    if len(y_arr):
+        Ecom_arr = m_total * g * (y_arr - y_arr[0]) + 0.5 * m_total * (ydot_arr**2 - ydot_arr[0]**2)
+    else:
+        Ecom_arr = np.array([])
 
     y_off = float(y_arr[-1]) if len(y_arr) else 0.0
     v_off = float(ydot_arr[-1]) if len(ydot_arr) else 0.0
@@ -565,9 +572,11 @@ def simulate_jump(technique, params, t_on):
       "knee_deg": 2.0 * np.degrees(theta_arr),
       "grf_bw": Fg_arr / (m_total * g),
       "Fm": Fm_arr,
-      "vCE": np.array(vce_hist),
+      "vCE": vce_arr,
       "vCoM": ydot_arr,
       "Ese": Ese_arr,
+      "Wce": Wce_arr,
+      "Ecom": Ecom_arr,
       "L": L_arr,
       "CE": ce_arr,
       "SEC": se_arr,
@@ -754,6 +763,29 @@ def run_all(p):
       }, {displayModeBar:false});
     }
 
+    function plotEnergy(divId, t, Ese, Wce, Ecom, title, opt = null) {
+      const traces = [];
+      if (opt) {
+        traces.push(
+          { x: opt.t, y: opt.Ese, mode:"lines", name:"SEC human ref", line:{dash:"dot", width:2}, opacity:0.28 },
+          { x: opt.t, y: opt.Wce, mode:"lines", name:"CE work human ref", line:{dash:"dot", width:2}, opacity:0.28 },
+          { x: opt.t, y: opt.Ecom, mode:"lines", name:"ΔCoM energy human ref", line:{dash:"dot", width:2}, opacity:0.28 },
+        );
+      }
+      traces.push(
+        { x: t, y: Ese, mode:"lines", name:"SEC elastic energy" },
+        { x: t, y: Wce, mode:"lines", name:"CE cumulative work" },
+        { x: t, y: Ecom, mode:"lines", name:"ΔCoM mechanical energy" },
+      );
+      Plotly.react(divId, traces, {
+        title: title,
+        xaxis: { title: "Time (s)" },
+        yaxis: { title: "Energy (J)" },
+        margin: { l: 56, r: 10, t: 40, b: 48 },
+        legend: { orientation: "h" }
+      }, {displayModeBar:false});
+    }
+
     function plotLengths(divId, t, L, CE, SEC, title, opt = null) {
       const traces = [];
       if (opt) {
@@ -830,9 +862,9 @@ def run_all(p):
       plotOne("vcom_cat", arr(cat.get("t")), arr(cat.get("vCoM")), "CoM velocity", "m/s", arr(catOpt.get("t")), arr(catOpt.get("vCoM")));
       plotOne("vcom_cmj", arr(cmj.get("t")), arr(cmj.get("vCoM")), "CoM velocity", "m/s", arr(cmjOpt.get("t")), arr(cmjOpt.get("vCoM")));
 
-      plotOne("ese_sq",  arr(sq.get("t")),  arr(sq.get("Ese")), "SEC elastic energy", "J", arr(sqOpt.get("t")), arr(sqOpt.get("Ese")));
-      plotOne("ese_cat", arr(cat.get("t")), arr(cat.get("Ese")), "SEC elastic energy", "J", arr(catOpt.get("t")), arr(catOpt.get("Ese")));
-      plotOne("ese_cmj", arr(cmj.get("t")), arr(cmj.get("Ese")), "SEC elastic energy", "J", arr(cmjOpt.get("t")), arr(cmjOpt.get("Ese")));
+      plotEnergy("energy_sq",  arr(sq.get("t")),  arr(sq.get("Ese")), arr(sq.get("Wce")), arr(sq.get("Ecom")), "Energy terms", { t: arr(sqOpt.get("t")), Ese: arr(sqOpt.get("Ese")), Wce: arr(sqOpt.get("Wce")), Ecom: arr(sqOpt.get("Ecom")) });
+      plotEnergy("energy_cat", arr(cat.get("t")), arr(cat.get("Ese")), arr(cat.get("Wce")), arr(cat.get("Ecom")), "Energy terms", { t: arr(catOpt.get("t")), Ese: arr(catOpt.get("Ese")), Wce: arr(catOpt.get("Wce")), Ecom: arr(catOpt.get("Ecom")) });
+      plotEnergy("energy_cmj", arr(cmj.get("t")), arr(cmj.get("Ese")), arr(cmj.get("Wce")), arr(cmj.get("Ecom")), "Energy terms", { t: arr(cmjOpt.get("t")), Ese: arr(cmjOpt.get("Ese")), Wce: arr(cmjOpt.get("Wce")), Ecom: arr(cmjOpt.get("Ecom")) });
 
       plotLengths("len_sq",  arr(sq.get("t")),  arr(sq.get("L")),  arr(sq.get("CE")),  arr(sq.get("SEC")),  "Lengths", { t: arr(sqOpt.get("t")), L: arr(sqOpt.get("L")), CE: arr(sqOpt.get("CE")), SEC: arr(sqOpt.get("SEC")) });
       plotLengths("len_cat", arr(cat.get("t")), arr(cat.get("L")), arr(cat.get("CE")), arr(cat.get("SEC")), "Lengths", { t: arr(catOpt.get("t")), L: arr(catOpt.get("L")), CE: arr(catOpt.get("CE")), SEC: arr(catOpt.get("SEC")) });
