@@ -862,8 +862,8 @@ def run_all(p):
       try {
         pyodide.globals.set("JS_PARAMS", params);
         const out = await pyodide.runPythonAsync(`run_all(JS_PARAMS)`);
-        pyodide.globals.set("JS_PARAMS_OPT", getOptimalParams());
-        const outOpt = await pyodide.runPythonAsync(`run_all(JS_PARAMS_OPT)`);
+        pyodide.globals.set("JS_PARAMS_HUMAN", getHumanParams());
+        const outOpt = await pyodide.runPythonAsync(`run_all(JS_PARAMS_HUMAN)`);
         render(out, outOpt);
         el("status").textContent = "Done.";
       } catch (e) {
