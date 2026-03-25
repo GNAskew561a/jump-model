@@ -767,9 +767,9 @@ def run_all(p):
       const traces = [];
       if (opt) {
         traces.push(
-          { x: opt.t, y: opt.Ese, mode:"lines", name:"SEC human ref", line:{dash:"dot", width:2}, opacity:0.28 },
-          { x: opt.t, y: opt.Wce, mode:"lines", name:"CE work human ref", line:{dash:"dot", width:2}, opacity:0.28 },
-          { x: opt.t, y: opt.Ecom, mode:"lines", name:"ΔCoM energy human ref", line:{dash:"dot", width:2}, opacity:0.28 },
+          { x: opt.t, y: opt.Ese, mode:"lines", name:"SEC human ref", line:{dash:"dot", width:2}, opacity:0.28, showlegend: false },
+          { x: opt.t, y: opt.Wce, mode:"lines", name:"CE work human ref", line:{dash:"dot", width:2}, opacity:0.28, showlegend: false },
+          { x: opt.t, y: opt.Ecom, mode:"lines", name:"ΔCoM energy human ref", line:{dash:"dot", width:2}, opacity:0.28, showlegend: false },
         );
       }
       traces.push(
