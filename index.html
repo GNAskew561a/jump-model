@@ -52,7 +52,7 @@
 
   <div class="card">
     <h2>Controls</h2>
-    <p class="tip">Tip: change one parameter at a time and compare the solid line with the faint dotted optimal line. This version follows Alexander (1995) closely for the CE–SEC mechanics, but includes a finite muscle activation time constant so force rises more realistically.</p>
+    <p class="tip">Tip: change one parameter at a time and compare the solid line with the faint dotted human-reference line. This version follows Alexander (1995) closely for the CE–SEC mechanics, but includes a finite muscle activation time constant so force rises more realistically.</p>
 
     <div class="group group-geom">
       <h3>Geometry and mass</h3>
@@ -83,13 +83,13 @@
 
       <div class="row">
         <label for="Vmax">Maximum muscle shortening velocity (lengths/s)<span class="help">Maximum speed the muscle fibres can shorten.</span></label>
-        <input id="Vmax" type="range" min="2" max="15" step="0.1" value="8.5">
+        <input id="Vmax" type="range" min="2" max="15" step="0.1" value="8.0">
         <div><code id="Vmaxval"></code></div>
       </div>
 
       <div class="row">
         <label for="Fiso">Maximum isometric muscle force (× body weight)<span class="help">Dimensionless force relative to body weight. For this human model, 1 × BW ≈ 687 N.</span></label>
-        <input id="Fiso" type="range" min="1.5" max="17.5" step="0.1" value="8.7">
+        <input id="Fiso" type="range" min="1.5" max="17.5" step="0.1" value="11.3">
         <div><code id="Fisoval"></code></div>
       </div>
 
@@ -101,7 +101,7 @@
 
       <div class="row">
         <label for="tauAct">Muscle activation kinetics (s)<span class="help">Time constant for force rise after activation. Larger values mean slower activation.</span></label>
-        <input id="tauAct" type="range" min="0.005" max="0.200" step="0.001" value="0.020">
+        <input id="tauAct" type="range" min="0.001" max="0.200" step="0.001" value="0.005">
         <div><code id="tauActVal"></code></div>
       </div>
     </div>
@@ -112,7 +112,7 @@
 
       <div class="row">
         <label for="C">Tendon compliance (m/N)<span class="help">Higher values mean a stretchier, less stiff tendon.</span></label>
-        <input id="C" type="range" min="0.5e-6" max="5e-6" step="0.1e-6" value="2e-6">
+        <input id="C" type="range" min="0.5e-6" max="1.1e-5" step="0.1e-6" value="5.2e-6">
         <div><code id="Cval"></code></div>
       </div>
     </div>
@@ -136,7 +136,7 @@
 
     <div style="margin-top:14px; display:flex; gap:12px; align-items:center;">
       <button id="runBtn" disabled>Loading…</button>
-      <button id="resetBtn" type="button">Reset to optimal</button>
+      <button id="resetBtn" type="button">Reset to Human</button>
       <span id="status" class="muted"></span>
     </div>
     <div id="err" class="err" style="margin-top:10px;"></div>
@@ -160,7 +160,7 @@
     </div>
 
     <div id="cmjInfo" class="muted" style="margin-top:10px; display:none;"></div>
-    <div class="small" style="margin-top:8px;">Plots show the current setting as a solid line and the optimal setting as a faint dotted line.</div>
+    <div class="small" style="margin-top:8px;">Plots show the current setting as a solid line and the human reference setting as a faint dotted line.</div>
   </div>
 
   <div class="card">
@@ -271,25 +271,25 @@
       syncLabels();
     });
 
-    const OPTIMAL_PARAMS = {
+    const HUMAN_PARAMS = {
       s: 0.45,
       knee_start_deg: 60,
       leg_frac: 0.30,
-      C_base: 2e-6,
-      Vmax_base: 8.5,
-      Fm_iso_mult: 6000 / BODY_WEIGHT_N,
+      C_base: 5.2e-6,
+      Vmax_base: 8.0,
+      Fm_iso_mult: 7760 / BODY_WEIGHT_N,
       k_moment: 0.00,
-      tau_act: 0.020,
+      tau_act: 0.005,
       match_depth: true,
       t_control: 0.00,
     };
 
-    function getOptimalParams() {
-      return { ...OPTIMAL_PARAMS };
+    function getHumanParams() {
+      return { ...HUMAN_PARAMS };
     }
 
-    function resetOptimal() {
-      const p = getOptimalParams();
+    function resetHuman() {
+      const p = getHumanParams();
       el("s").value = String(p.s);
       el("kneeStart").value = String(p.knee_start_deg);
       el("legFrac").value = String(p.leg_frac);
@@ -303,7 +303,7 @@
       syncLabels();
     }
 
-    el("resetBtn").addEventListener("click", resetOptimal);
+    el("resetBtn").addEventListener("click", resetHuman);
     syncLabels();
 
     let pyodide;
@@ -716,7 +716,7 @@ def run_all(p):
             x: tOpt,
             y: FOpt,
             mode: "lines",
-            name: "Force optimal",
+            name: "Force human ref",
             line: { dash: "dot", width: 2 },
             opacity: 0.35,
             hovertemplate: "Optimal force<extra></extra>",
@@ -726,7 +726,7 @@ def run_all(p):
             x: tOpt,
             y: vCEOpt,
             mode: "lines",
-            name: "CE vel optimal",
+            name: "CE vel human ref",
             line: { dash: "dot", width: 2 },
             opacity: 0.25,
             hovertemplate: "Optimal CE velocity<extra></extra>",
@@ -758,9 +758,9 @@ def run_all(p):
       const traces = [];
       if (opt) {
         traces.push(
-          { x: opt.t, y: opt.L, mode:"lines", name:"MTU optimal", line:{dash:"dot", width:2}, opacity:0.28 },
-          { x: opt.t, y: opt.CE, mode:"lines", name:"CE optimal", line:{dash:"dot", width:2}, opacity:0.28 },
-          { x: opt.t, y: opt.SEC, mode:"lines", name:"SEC optimal", line:{dash:"dot", width:2}, opacity:0.28 },
+          { x: opt.t, y: opt.L, mode:"lines", name:"MTU human ref", line:{dash:"dot", width:2}, opacity:0.28 },
+          { x: opt.t, y: opt.CE, mode:"lines", name:"CE human ref", line:{dash:"dot", width:2}, opacity:0.28 },
+          { x: opt.t, y: opt.SEC, mode:"lines", name:"SEC human ref", line:{dash:"dot", width:2}, opacity:0.28 },
         );
       }
       traces.push(
